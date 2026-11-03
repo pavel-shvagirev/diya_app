@@ -15,7 +15,7 @@ import {
 describe('resolveSafePath', () => {
   it('resolves a simple file path within base', () => {
     const result = resolveSafePath('/sync/root', 'file.txt');
-    expect(result).toBe('/sync/root/file.txt');
+    expect(result).toBe(resolve('/sync/root/file.txt'));
   });
 
   it('blocks path traversal attempt', () => {
@@ -26,7 +26,7 @@ describe('resolveSafePath', () => {
 
   it('normalizes dot-dots within allowed range', () => {
     const result = resolveSafePath('/sync/root', 'dir/../dir2/file.txt');
-    expect(result).toBe('/sync/root/dir2/file.txt');
+    expect(result).toBe(resolve('/sync/root/dir2/file.txt'));
   });
 
   it('rejects empty base or target', () => {
@@ -40,7 +40,7 @@ describe('resolveSafePath', () => {
 
   it('handles absolute-like paths safely', () => {
     const result = resolveSafePath('/sync/root', './file.txt');
-    expect(result).toBe('/sync/root/file.txt');
+    expect(result).toBe(resolve('/sync/root/file.txt'));
   });
 });
 

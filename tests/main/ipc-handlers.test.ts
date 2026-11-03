@@ -394,7 +394,7 @@ describe('IPC handlers', () => {
       expect(downloadFile.mock.calls[0][1]).toBe('/a.txt');
       // The size and md5 the Disk reported go along, so the download is verified.
       expect(downloadFile.mock.calls[0][5]).toEqual({ size: 3, md5: 'abc123' });
-      expect(downloadFile.mock.calls[0][2]).toBe(`${dest.replace(/\/$/, '')}/a.txt`);
+      expect(downloadFile.mock.calls[0][2]).toBe(path.join(dest, 'a.txt'));
     });
 
     it('downloads a folder recursively keeping its structure', async () => {
@@ -414,7 +414,7 @@ describe('IPC handlers', () => {
       });
       registerIpcHandlers(win, c as never);
       await call(CH.FILES_DOWNLOAD, ['/Dir']);
-      const targets = downloadFile.mock.calls.map(x => String(x[2]));
+      const targets = downloadFile.mock.calls.map(x => String(x[2]).replace(/\\/g, '/'));
       expect(targets.some(t => t.endsWith('/Dir/x.txt'))).toBe(true);
       expect(targets.some(t => t.endsWith('/Dir/y.txt'))).toBe(true);
     });

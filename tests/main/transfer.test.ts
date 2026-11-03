@@ -305,7 +305,10 @@ describe('upload: retries, answers and limits', () => {
     await expect(uploadFile(links() as never, file, '/f.txt', false)).resolves.toBe('accepted');
   });
 
-  it('refuses a file above what the Disk takes at all, before asking for a link', async () => {
+  // Windows has no sparse files here: truncating to 50 GB fails with ENOSPC.
+  const sparse = process.platform === 'win32' ? it.skip : it;
+
+  sparse('refuses a file above what the Disk takes at all, before asking for a link', async () => {
     const big = join(dir, 'big.bin');
     writeFileSync(big, '');
     truncateSync(big, MAX_UPLOAD_BYTES + 1); // sparse: no space is used
@@ -318,7 +321,7 @@ describe('upload: retries, answers and limits', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it('a file of exactly the limit is not refused up front', async () => {
+  sparse('a file of exactly the limit is not refused up front', async () => {
     const edge = join(dir, 'edge.bin');
     writeFileSync(edge, '');
     truncateSync(edge, MAX_UPLOAD_BYTES);
