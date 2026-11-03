@@ -12,7 +12,7 @@ Unofficial desktop client for [Yandex Disk](https://disk.yandex.com/): a compact
 (folder tree + table), two-way folder sync, trash, and a log window. Windows, macOS and Linux.
 
 > Provided "as is", without warranty ([LICENSE](LICENSE)). Sync moves, overwrites and deletes files
-> on this computer and on the Disk: keep a separate backup of anything you cannot lose.
+> locally and in the cloud: keep a separate backup of anything you cannot lose.
 
 ![Main window](docs/screenshots/en/main-light.png)
 
@@ -50,13 +50,13 @@ Download the file for your system from the [Releases](../../releases) page.
 
 | System  | File                                               | Notes                                                                                                                                                                               |
 | ------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| macOS   | `.dmg` (Apple Silicon or Intel)                    | Not notarized. First start: System Settings → Privacy & Security → **Open Anyway** (older macOS: right-click → Open), or `xattr -dr com.apple.quarantine "/Applications/Diya.app"`. |
+| macOS   | `.dmg` (Apple Silicon)                             | Not notarized. First start: System Settings → Privacy & Security → **Open Anyway** (older macOS: right-click → Open), or `xattr -dr com.apple.quarantine "/Applications/Diya.app"`. |
 | Windows | `…-win-x64.exe` (installer) or the portable `.exe` | Not signed: SmartScreen shows "unknown publisher" (More info → Run anyway).                                                                                                         |
 | Linux   | `.AppImage`, `.deb`, `.rpm`                        | `chmod +x *.AppImage && ./*.AppImage`, `sudo apt install ./*.deb`, `sudo dnf install ./*.rpm`.                                                                                      |
 
 ## Sign in
 
-Register your own free application at Yandex once (about two minutes) and paste its ID and
+Register your own free application at Yandex once and paste its ID and
 secret. Press **Sign in with Yandex**: a code appears in the app window (and is copied); paste it
 on the Yandex page that opens and allow access. A token obtained for your application also works.
 Step by step: [docs/SIGN_IN.en.md](docs/SIGN_IN.en.md).
@@ -162,8 +162,7 @@ is not covered by the MIT license ([assets/brand/NOTICE.md](assets/brand/NOTICE.
 
 ## Limitations
 
-One sync pair. Folders are not deleted on the other side (files are). No file preview. Public
-links cannot be created.
+One sync pair. Folders are not deleted on the other side (files are).
 
 ## License
 

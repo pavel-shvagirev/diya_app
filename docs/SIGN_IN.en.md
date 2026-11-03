@@ -1,7 +1,7 @@
 # Signing in: your own Yandex application
 
 Diya contains no Yandex application ID, secret or token. Yandex gives Disk access only to
-registered OAuth applications: register your own, free, once, about two minutes. The app then works
+registered OAuth applications: register your own, once. The app then works
 with your own Disk, and you are the owner of the application under the
 [API terms](https://yandex.ru/legal/disk_api/).
 

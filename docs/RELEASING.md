@@ -8,7 +8,7 @@
 1. Обновите `version` в `package.json`, а также `CHANGELOG.en.md` и `CHANGELOG.md`.
 2. `npm run check` должен проходить.
 3. Тег и пуш: `git tag v0.2.0 && git push origin v0.2.0`.
-4. Workflow **Release** собирает Linux (AppImage, deb, rpm), macOS (dmg и zip, x64 и arm64) и Windows
+4. Workflow **Release** собирает Linux (AppImage, deb, rpm), macOS (dmg и zip, только Apple Silicon) и Windows
    (установщик и portable) и прикладывает всё к **черновику** релиза. Проверьте артефакты и
    опубликуйте черновик.
 
