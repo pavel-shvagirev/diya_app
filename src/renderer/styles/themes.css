@@ -1,0 +1,177 @@
+/*
+ * Design tokens + base styles. Flat, compact, sharp-cornered (GitHub-like chrome, blue accent).
+ * Contract: docs/DESIGN.md.
+ *
+ * Theme selection: `color-scheme: light dark` makes the OS setting win and
+ * light-dark() picks the matching value — no JS needed. An explicit
+ * data-theme="light|dark" on <html> overrides the system.
+ */
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('../fonts/JetBrainsMono-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url('../fonts/JetBrainsMono-Bold.woff2') format('woff2');
+}
+
+:root {
+  color-scheme: light dark;
+
+  --font-sans:
+    'Segoe WPC', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui,
+    sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --ui-bg: light-dark(#ffffff, #0d1117);
+  --ui-bg-card: light-dark(#f6f8fa, #010409);
+  --ui-bg-subtle: light-dark(#f6f6f6, #1a1e24);
+  --ui-bg-popover: light-dark(#ffffff, #161b22);
+  --ui-bg-hover: color-mix(in srgb, var(--ui-text-primary) 6%, transparent);
+
+  --ui-text-primary: light-dark(#1f2328, #e6edf3);
+  --ui-text-secondary: light-dark(#656d76, #9198a1);
+  --ui-text-tertiary: light-dark(#6e7781, #7d8590);
+
+  --ui-stroke: light-dark(#d0d7de, #30363d);
+  --ui-stroke-strong: light-dark(#afb8c1, #484f58);
+
+  --ui-accent: light-dark(#0053fd, #4a84fe);
+  --ui-accent-fg: light-dark(#ffffff, #161616);
+  --ui-accent-bg: light-dark(#e3edff, #17243a);
+
+  --ui-danger: light-dark(#cf222e, #f85149);
+  --ui-danger-bg: color-mix(in srgb, var(--ui-danger) 10%, var(--ui-bg));
+  --ui-success: light-dark(#1a7f37, #3fb950);
+  --ui-warning: light-dark(#9a6700, #d29922);
+
+  --ui-backdrop: rgba(1, 4, 9, 0.5);
+  --ui-radius: 2px;
+  --shadow-popup: 0 4px 12px light-dark(rgba(31, 35, 40, 0.14), rgba(1, 4, 9, 0.55));
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+/* ===== Base ===== */
+html,
+body {
+  margin: 0;
+  background: var(--ui-bg);
+  color: var(--ui-text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 600;
+}
+
+a {
+  color: var(--ui-accent);
+}
+
+code,
+pre,
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+code {
+  background: var(--ui-bg-subtle);
+  border-radius: var(--ui-radius);
+  padding: 0.1em 0.35em;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: transparent;
+  border: 1px solid var(--ui-stroke);
+  border-radius: var(--ui-radius);
+  transition: background-color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--ui-bg-hover);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+input,
+select,
+textarea {
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-stroke);
+  border-radius: var(--ui-radius);
+}
+
+input::placeholder {
+  color: var(--ui-text-tertiary);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--ui-accent) 28%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ui-stroke-strong);
+  border-radius: 5px;
+  border: 2px solid var(--ui-bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

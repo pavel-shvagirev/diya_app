@@ -1,0 +1,198 @@
+{
+  "name": "diya",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Unofficial cross-platform desktop client for Yandex Disk: file manager, two-way folder sync, trash",
+  "author": {
+    "name": "Diya contributors",
+    "email": "noreply@example.com"
+  },
+  "license": "MIT",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
+    "dev:main": "tsc -p tsconfig.main.json --watch",
+    "dev:renderer": "vite",
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "tsc -p tsconfig.main.json && npm run build:preload",
+    "build:preload": "esbuild src/preload/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/preload/preload.js",
+    "build:renderer": "vite build",
+    "prestart": "npm run build && npm run native:rebuild:electron && node scripts/brand-dev-electron.cjs",
+    "start": "electron .",
+    "package": "electron-builder --dir --publish never",
+    "dist": "electron-builder --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,json,md,css}\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.main.json && tsc --noEmit -p tsconfig.renderer.json",
+    "pretest": "npm run native:rebuild:node",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "security:audit": "npm audit --audit-level=high",
+    "prepare": "husky",
+    "native:rebuild:electron": "electron-builder install-app-deps",
+    "native:rebuild:node": "npm rebuild better-sqlite3",
+    "check": "npm run lint && npm run typecheck && npm run format:check && npm run test:coverage",
+    "e2e": "npm run build && npm run native:rebuild:electron && electron -r ./e2e/smoke.cjs .",
+    "icons": "python3 scripts/make-icons.py"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "chokidar": "^3.6.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "@vitest/coverage-v8": "^1.0.0",
+    "concurrently": "^8.2.0",
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.21.5",
+    "eslint": "^8.56.0",
+    "eslint-plugin-import": "^2.29.0",
+    "eslint-plugin-react": "^7.33.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "happy-dom": "^21.0.4",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
+    "prettier": "^3.2.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0",
+    "vitest": "^1.0.0",
+    "zustand": "^4.5.0"
+  },
+  "build": {
+    "appId": "dev.diya.app",
+    "productName": "Diya",
+    "copyright": "Copyright © Diya contributors",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/icon.png",
+      "assets/tray-icon.png",
+      "assets/tray-icon@2x.png",
+      "package.json",
+      "!**/*.map",
+      "!node_modules/better-sqlite3/{deps,src}/**",
+      "!node_modules/**/{test,tests,docs,*.md}"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "identity": "-"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "rpm",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "Network;FileTransfer",
+      "synopsis": "Unofficial client for Yandex Disk",
+      "maintainer": "Diya contributors <noreply@example.com>"
+    },
+    "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    }
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,css}": [
+      "prettier --write"
+    ]
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "yandex-disk",
+    "electron",
+    "sync",
+    "desktop"
+  ]
+}
