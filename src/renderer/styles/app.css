@@ -637,8 +637,9 @@
 /* Two groups: the filters may wrap onto more rows, the actions stay together in the top right
    corner, so a button never ends up alone on a row of its own. */
 .logview__bar {
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: 8px;
+  gap: 6px 8px;
 }
 .logview__filters {
   display: flex;
@@ -655,8 +656,10 @@
   gap: 8px;
   white-space: nowrap;
 }
-.logview__filters .search__input {
-  min-width: 140px;
+/* The search box is the second row of the bar and spans the whole width of the window. */
+.logview__bar > .search__input {
+  flex: 1 1 100%;
+  min-width: 0;
 }
 .logview__label {
   display: inline-flex;

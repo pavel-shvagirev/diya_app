@@ -123,12 +123,6 @@ export function LogView(): JSX.Element {
               ))}
             </select>
           </label>
-          <input
-            className="search__input"
-            placeholder={t.logSearch}
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-          />
         </div>
         <div className="logview__actions">
           <label className="logview__label" title={t.logTipAutoscroll}>
@@ -164,6 +158,12 @@ export function LogView(): JSX.Element {
             {t.logClear}
           </button>
         </div>
+        <input
+          className="search__input"
+          placeholder={t.logSearch}
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+        />
       </div>
       {sensitive && (
         <div className="logview__warn" role="alert">

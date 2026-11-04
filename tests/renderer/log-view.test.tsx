@@ -55,7 +55,11 @@ describe('LogView', () => {
         .map(b => b.textContent)
     ).toEqual([t.logCopy, t.logOpenFile, t.logClear]);
     expect(within(actions).getByLabelText(t.logAutoscroll)).toBeInTheDocument();
-    expect(within(filters).getByPlaceholderText(t.logSearch)).toBeInTheDocument();
+    // the search box is a row of its own in the bar, not part of either group
+    const search = container.querySelector('.logview__bar > .search__input');
+    expect(search).toBe(screen.getByPlaceholderText(t.logSearch));
+    expect(filters.contains(search)).toBe(false);
+    expect(actions.contains(search)).toBe(false);
     expect(within(filters).queryByText(t.logClear)).toBeNull();
   });
 

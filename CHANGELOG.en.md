@@ -5,93 +5,43 @@ versions: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-11-04
+## [0.2.1] - 2026-11-04
+
+First public release.
 
 ### Added
 
-- File-manager UI: folder tree, table, toolbar, context menu, trash, status bar with quota and
-  live sync/transfer progress. Light/dark by system theme, Russian and English.
-- Sign-in with the user's own Yandex application: Client ID and Client secret (device flow), or a
-  pasted token or redirect address. The secret and the session are stored encrypted; no
-  application ID, secret or token ships with the app. Links to Yandex OAuth follow the interface
-  language (.ru / .com); a rejection shows Yandex's error code. Guide: `docs/SIGN_IN.en.md`.
-- Interface language: English or Russian; system language by default, Settings → Language fixes
-  one (menus, tray, windows and the conflict-copy label follow at once).
-- Two-way folder sync with conflict copies, deletion safeguards and a persistent sync state.
-- Log window (`Ctrl/Cmd+Shift+L`): categories, verbosity, search; tokens and signed links redacted.
-- Tray; closing the window keeps sync running (`Ctrl/Cmd+W`); `Ctrl/Cmd+Q` needs a second press,
-  the menu item "Quit" exits at once.
-- Application icon from the project's own icon set: Dock/window icon, tray icon, installers.
-- Downloads are verified against the size, md5 and announced length reported by the Disk before
-  they replace anything.
-- Contract tests against the official API response examples (`tests/contract`); end-to-end run
-  against an in-memory Disk (`npm run e2e`); `AGENTS.md`; issue and pull-request templates.
-- Packaging for macOS (dmg, zip), Windows x64/arm64 (installer, portable) and Linux x64/arm64
-  (AppImage, deb, rpm)
-  through GitHub Actions; CI with lint, typecheck, tests with coverage, CodeQL, dependency audit.
-- README: launch-at-login instructions for macOS, Windows and Linux.
-- Trash: folders inside it can be opened (path bar, Up, Enter and double-click), and an item can
-  be restored under a new name ("Restore as…"), for when the old name is taken.
-- Sync of the whole Disk reads the flat list of all files (`/v1/disk/resources/files`, one
-  request per 1000 files, only the fields it needs) instead of listing every folder; the folder
-  tree is read in full on the first run, on "Sync now", every 30 minutes, and if the Disk refuses
-  the flat list. A file missing from that list is deleted locally only after the Disk confirms it
-  is gone.
-- Folders follow deletions like files do: a folder deleted on one side is deleted on the other
-  (to the Disk trash or the system trash) once nothing unsynced is left inside; if something is,
-  the folder is made again on the side that lost it and nothing is lost. A folder with hidden
-  files of yours is kept. Changes made in the file manager are seen by the next sync run.
-- The "Empty trash" button no longer spills over its neighbours: it is an icon with a label in the tooltip like the other toolbar buttons, and "Restore as…" has its own icon.
-- Log window: the toolbar no longer pushes "Clear" onto a row of its own (filters wrap, the
-  actions stay together); a red banner warns while `trace` is being recorded or the log holds
-  `trace` entries (they carry file names and paths), and turning `trace` on writes a warning into
-  the log itself. The log file is moved to `diya.log.1` at 5 MB also while the app runs, not
-  only at start.
-- Free space is checked before an upload of 64 MB or more: a file that cannot fit fails at once
-  with the numbers instead of after a long transfer.
+- File manager: folder tree, table, toolbar, context menu, trash (folders inside it, "Restore
+  as…"), status bar with quota and live progress. Light/dark theme, Russian and English.
+- Sign-in with your own Yandex application (device flow, or a pasted token); the secret and the
+  session are stored encrypted. Guide: `docs/SIGN_IN.en.md`.
+- Two-way folder sync with conflict copies, deletion safeguards and a persistent state. Folders
+  follow deletions like files do; the Disk is read as one flat list of files, and a file is
+  deleted locally only after the Disk confirms it is gone.
+- Free space is checked before an upload of 64 MB or more.
+- Log window (`Ctrl/Cmd+Shift+L`) with a red warning while `trace` is recorded; `diya.log` is
+  moved to `diya.log.1` at 5 MB. Tokens and signed links are redacted.
+- Tray; closing the window keeps sync running.
+- Installers: macOS (dmg, zip), Windows x64/arm64 (installer, portable), Linux x64/arm64
+  (AppImage, deb, rpm). CI with lint, typecheck, tests, CodeQL, dependency audit.
 
 ### Changed
 
-- Sync runs are kept at least 5 s apart, except "Sync now", which starts at once (a run longer than the 60 s timer was followed by the
-  next at once), and a file the Disk answers with 5xx or 429 is retried after 1 min, 2, 4 … up to
-  30 min instead of on every run.
-- Unticking sync, and quitting, cancel the run in flight: requests and transfers get an abort
-  signal and stop at once (a half-downloaded file is removed) instead of letting the run finish;
-  "Sync now" during a run no longer queues a second full scan behind it.
-- Folder listings for the sync engine ask the Disk only for the fields it reads.
-- A full Disk (507) is no longer held back like a server fault: the next run tries again.
-- Electron 45; better-sqlite3 13; electron-builder 26.
+- Sync runs are at least 5 s apart ("Sync now" starts at once); a file the Disk answers with
+  5xx/429 is retried after 1, 2, 4 … 30 min instead of on every run.
+- Pausing or quitting cancels the run in flight, including requests and transfers.
 - Creating public links is disabled (existing links can be revoked).
-- API client: a timeout on every request; reads are retried after network failures, writes are
-  not; `Retry-After` is honoured (at most one minute); errors are typed (`YandexApiError`).
-- Transfers: limits on connecting, on silence and on the Disk's answer; uploads are repeated
-  after 500/503 and failed connections; 413, 507 and 412 are reported in words; 202 counts as
-  accepted; files above 50 GB are refused before any request.
-- Operation links are recognised in both forms the reference shows
-  (`/operations?id=` and `/operations/<id>`); only operation links are polled.
+- Electron 45, better-sqlite3 13, electron-builder 26; requests go through undici 8.
 
 ### Security
 
-- IPC: every handler refuses messages from frames that are not the app's own pages; all web
-  permission requests are denied.
-- Sync folder: the whole disk, the home folder, system folders and the app's data folder are
-  refused; symbolic links are not followed on upload or in sync; transfer links must be https.
-- "Show in folder" accepts only paths inside the sync folder or the app data folder (it took any
-  absolute path from the page); the new name of a restored trash item is validated like any name.
-- Linux: tokens are not stored when only the plain-text keyring fallback is available.
-- Packaged builds: Electron fuses (no `ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS`, `--inspect`;
-  asar-only with integrity check); macOS builds are ad-hoc signed; workflows do not keep the
-  checkout token.
+- IPC refuses foreign frames and validates all input; web permission requests are denied.
+- The sync folder cannot be the whole disk, the home or a system folder; symbolic links are not
+  followed; "Show in folder" accepts only the sync and app data folders.
+- Packaged builds: Electron fuses, asar integrity; Linux: no tokens in a plain-text keyring.
 
 ### Fixed
 
-- A download could crash the whole app ("A JavaScript error occurred in the main process",
-  `assert(!this.paused)`): the HTTP client bundled with Electron 45 fails when the server closes the
-  connection while the file is still being written (nodejs/undici#5360). Requests now go through
-  undici 8, which has the fix.
-- Uploads sent an empty body for small files, which produced chains of conflict copies.
-- Deleting files locally was refused as a "mass deletion"; it is carried to the Disk trash.
-- The OAuth token could be sent to a non-API address while polling an operation.
-- Tray "Open" crashed after the window was closed.
-- A file or folder replaced by a symbolic link is no longer deleted from the Disk.
+- A download could crash the app (`assert(!this.paused)`, nodejs/undici#5360).
+- Small files were uploaded empty, which produced chains of conflict copies.
 - A hung connection no longer freezes sync.
