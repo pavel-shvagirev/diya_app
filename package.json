@@ -59,7 +59,7 @@
     "concurrently": "^10.0.6",
     "electron": "^45.2.1",
     "electron-builder": "^26.18.0",
-    "esbuild": "^0.21.5",
+    "esbuild": "^0.28.2",
     "eslint": "^8.56.0",
     "eslint-plugin-import": "^2.29.0",
     "eslint-plugin-react": "^7.33.0",
