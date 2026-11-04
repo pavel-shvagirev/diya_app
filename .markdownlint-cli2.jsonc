@@ -1,0 +1,16 @@
+{
+  // Rules for the project's Markdown (see docs/DESIGN.md for the writing style).
+  "config": {
+    "default": true,
+    // Prose lines stay within 100 columns, like the code; tables and code blocks are exempt.
+    "MD013": { "line_length": 100, "code_blocks": false, "tables": false, "headings": false },
+    // CHANGELOG repeats "Added", "Fixed" under every version.
+    "MD024": { "siblings_only": true },
+    // <details> blocks with screenshots and the language switch line use inline HTML.
+    "MD033": { "allowed_elements": ["details", "summary", "br", "kbd"] },
+    // The language switch line comes before the first heading's content on purpose.
+    "MD041": false
+  },
+  "ignores": ["node_modules/**", "release/**", "dist/**", "coverage/**", "plans/**", ".superpowers/**", ".etc/**"],
+  "globs": ["**/*.md"]
+}

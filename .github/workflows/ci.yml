@@ -16,6 +16,7 @@ jobs:
   check:
     name: Check (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -28,8 +29,18 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - name: Install dependencies
+        shell: bash
+        run: |
+          # The registry and nodejs.org time out now and then: three tries before giving up.
+          for attempt in 1 2 3; do
+            npm ci && exit 0
+            echo "npm ci failed (attempt $attempt)"; sleep 20
+          done
+          exit 1
       - run: npm run lint
+      - run: npm run lint:md
+      - run: npm run lint:yaml
       - run: npm run typecheck
       - run: npm run format:check
       - run: npm run test:coverage
@@ -38,6 +49,7 @@ jobs:
   audit:
     name: Dependency audit (production)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -46,3 +58,29 @@ jobs:
         with:
           node-version: 22
       - run: npm audit --omit=dev --audit-level=high
+
+  e2e:
+    name: End-to-end (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        shell: bash
+        run: |
+          # The registry and nodejs.org time out now and then: three tries before giving up.
+          for attempt in 1 2 3; do
+            npm ci && exit 0
+            echo "npm ci failed (attempt $attempt)"; sleep 20
+          done
+          exit 1
+      # The real app against an in-memory Disk, on a virtual display (e2e/smoke.cjs).
+      - run: xvfb-run -a npm run e2e
+        env:
+          E2E_NO_SANDBOX: '1'
