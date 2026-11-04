@@ -43,7 +43,8 @@
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
-    "chokidar": "^6.0.0"
+    "chokidar": "^6.0.0",
+    "undici": "^8.12.3"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",

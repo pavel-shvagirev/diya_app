@@ -54,6 +54,10 @@ versions: [SemVer](https://semver.org/).
 
 ### Fixed
 
+- A download could crash the whole app ("A JavaScript error occurred in the main process",
+  `assert(!this.paused)`): the HTTP client bundled with Electron 45 fails when the server closes the
+  connection while the file is still being written (nodejs/undici#5360). Requests now go through
+  undici 8, which has the fix.
 - Uploads sent an empty body for small files, which produced chains of conflict copies.
 - Deleting files locally was refused as a "mass deletion"; it is carried to the Disk trash.
 - The OAuth token could be sent to a non-API address while polling an operation.

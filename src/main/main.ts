@@ -19,6 +19,7 @@ import {
 import { openLogWindow, registerLogIpc, relocalizeLogWindow } from './log-window.js';
 import { logger } from './logger.js';
 import { menuStrings } from './menu-strings.js';
+import { configureNetwork } from './network.js';
 import { createQuitGuard } from './quit-guard.js';
 import { attachQuitKey } from './quit-key.js';
 import { YandexRemote } from './remote-storage.js';
@@ -40,6 +41,8 @@ import type { BrowserWindow } from 'electron';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+configureNetwork();
 
 // The window may be closed (Cmd/Ctrl+W) while the app lives on in the tray, so nobody
 // keeps a BrowserWindow reference: everything goes through the holder, which re-creates it.
