@@ -5,6 +5,30 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      # Peer ranges tie these together: one PR, or the install fails (ERESOLVE).
+      test-toolchain:
+        patterns:
+          - vite
+          - vitest
+          - '@vitest/*'
+          - '@vitejs/*'
+          - esbuild
+          - happy-dom
+      lint-toolchain:
+        patterns:
+          - eslint
+          - 'eslint-*'
+          - '@typescript-eslint/*'
+          - typescript
+          - prettier
+      react:
+        patterns:
+          - react
+          - react-dom
+          - '@types/react'
+          - '@types/react-dom'
+          - '@testing-library/*'
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -10,19 +10,21 @@ let _notificationShowCalls: Array<{ title: string; body: string }> = [];
 const _notificationShow = vi.fn();
 
 vi.mock('electron', () => ({
-  Tray: vi.fn().mockImplementation(() => ({
-    destroy: _trayDestroy,
-    setContextMenu: _traySetContextMenu,
-    setToolTip: _traySetToolTip,
-    on: _trayOn,
-  })),
+  Tray: vi.fn().mockImplementation(function () {
+    return {
+      destroy: _trayDestroy,
+      setContextMenu: _traySetContextMenu,
+      setToolTip: _traySetToolTip,
+      on: _trayOn,
+    };
+  }),
   Menu: {
     buildFromTemplate: vi.fn((template: Array<{ label: string; click?: () => void }>) => ({
       template,
     })),
   },
   Notification: Object.assign(
-    vi.fn().mockImplementation((options: { title: string; body: string }) => {
+    vi.fn().mockImplementation(function (options: { title: string; body: string }) {
       _notificationShowCalls.push({ title: options.title, body: options.body });
       return { show: _notificationShow };
     }),

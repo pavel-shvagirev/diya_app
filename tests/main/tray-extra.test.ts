@@ -7,15 +7,12 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock('electron', () => ({
-  Tray: vi.fn().mockImplementation(() => ({
-    destroy: vi.fn(),
-    setContextMenu: vi.fn(),
-    setToolTip: vi.fn(),
-    on: vi.fn(),
-  })),
+  Tray: vi.fn().mockImplementation(function () {
+    return { destroy: vi.fn(), setContextMenu: vi.fn(), setToolTip: vi.fn(), on: vi.fn() };
+  }),
   Menu: { buildFromTemplate: (t: unknown) => ({ t }) },
   Notification: Object.assign(
-    vi.fn().mockImplementation((o: unknown) => {
+    vi.fn().mockImplementation(function (o: unknown) {
       h.notifications.push(o);
       return { show: vi.fn() };
     }),

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 
 // Mock electron's contextBridge and ipcRenderer
 const mockInvoke = vi.fn();
@@ -24,6 +24,11 @@ vi.mock('electron', () => ({
 }));
 
 describe('preload', () => {
+  // Mock calls are cleared between tests, so every test loads the module afresh.
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
   it('exposes window.api with all expected methods', async () => {
     // Force reload the module
     await import('../../src/preload/preload.js');
