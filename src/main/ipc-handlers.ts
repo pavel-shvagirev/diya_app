@@ -384,7 +384,7 @@ export function registerIpcHandlers(
   });
   // Fire and forget: a run can take minutes; progress arrives as events.
   reg(CH.SYNC_NOW, () => {
-    void syncEngine?.syncNow();
+    void syncEngine?.syncNow({ immediate: true });
     return Promise.resolve();
   });
   reg(CH.SYNC_STATUS, (): Promise<SyncState> => {

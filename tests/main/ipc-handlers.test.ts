@@ -507,7 +507,7 @@ describe('IPC handlers', () => {
       e.emit({ phase: 'syncing' });
       expect(send).toHaveBeenCalledWith(EVENTS.SYNC_PROGRESS, { phase: 'syncing' });
       await call(CH.SYNC_NOW);
-      expect(e.syncNow).toHaveBeenCalled();
+      expect(e.syncNow).toHaveBeenCalledWith({ immediate: true });
     });
   });
 

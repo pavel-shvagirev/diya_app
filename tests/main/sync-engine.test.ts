@@ -35,6 +35,9 @@ class FakeRemote implements RemoteStorage {
   expectations = new Map<string, { size?: number; md5?: string } | undefined>();
   /** Remote paths whose download fails verification, as the real transfer layer would. */
   corrupt = new Set<string>();
+  /** Every download() call, and the error (if any) the Disk answers with. */
+  downloads = 0;
+  downloadError: Error | null = null;
 
   private stamp(): string {
     return new Date(Date.UTC(2026, 0, 1, 0, 0, this.clock++)).toISOString();
@@ -91,6 +94,8 @@ class FakeRemote implements RemoteStorage {
   ): Promise<void> {
     const f = this.files.get(remote);
     if (!f) throw new Error('404');
+    this.downloads++;
+    if (this.downloadError) throw this.downloadError;
     this.expectations.set(remote, expected);
     if (this.corrupt.has(remote)) throw new Error(`Download of ${remote} failed the md5 check`);
     mkdirSync(dirname(local), { recursive: true });
@@ -122,6 +127,7 @@ describe('SyncEngine', () => {
     engine = new SyncEngine(remote, db, {
       watch: false,
       settleMs: 0,
+      minGapMs: 0,
       now: () => new Date(2026, 5, 7, 8, 9),
     });
     engine.configure({ id, localPath: localDir, remotePath: '/Sync' });
@@ -454,6 +460,7 @@ describe('SyncEngine', () => {
       const ru = new SyncEngine(remote, db, {
         watch: false,
         settleMs: 0,
+        minGapMs: 0,
         now: () => new Date(2026, 5, 7, 8, 9),
         conflictLabel: () => 'конфликтная копия',
       });
@@ -480,7 +487,7 @@ describe('SyncEngine', () => {
     });
 
     it('a file still being written is left alone until it settles', async () => {
-      const slow = new SyncEngine(remote, db, { watch: false, settleMs: 60_000 });
+      const slow = new SyncEngine(remote, db, { watch: false, settleMs: 60_000, minGapMs: 0 });
       slow.configure({ id: db.getPairs()[0]!.id, localPath: localDir, remotePath: '/Sync' });
       write('growing.bin', 'partial');
       await slow.syncNow();
@@ -514,6 +521,7 @@ describe('SyncEngine', () => {
       const e = new SyncEngine(remote, db, {
         watch: false,
         settleMs: 0,
+        minGapMs: 0,
         now: () => new Date(2026, 5, 7, 8, 9),
       });
       e.configure({ id: db.getPairs()[0]!.id, localPath: localDir, remotePath: '/Sync' });
@@ -588,7 +596,7 @@ describe('SyncEngine', () => {
 
   describe('control and schedule', () => {
     const make = (opts: Partial<ConstructorParameters<typeof SyncEngine>[2]> = {}) => {
-      const e = new SyncEngine(remote, db, { watch: false, settleMs: 0, ...opts });
+      const e = new SyncEngine(remote, db, { watch: false, settleMs: 0, minGapMs: 0, ...opts });
       e.configure({ id: db.getPairs()[0]!.id, localPath: localDir, remotePath: '/Sync' });
       return e;
     };
@@ -606,7 +614,7 @@ describe('SyncEngine', () => {
     });
 
     it('start without a configured pair does nothing; syncNow without a pair returns', async () => {
-      const e = new SyncEngine(remote, db, { watch: false });
+      const e = new SyncEngine(remote, db, { watch: false, minGapMs: 0 });
       e.start();
       expect(e.isEnabled()).toBe(false);
       await expect(e.syncNow()).resolves.toBeUndefined();
@@ -695,7 +703,7 @@ describe('SyncEngine', () => {
 
   describe('first sight and bookkeeping', () => {
     it('a fresh file present on both sides is left alone (no conflict, no transfer)', async () => {
-      const e = new SyncEngine(remote, db, { watch: false, settleMs: 60_000 });
+      const e = new SyncEngine(remote, db, { watch: false, settleMs: 60_000, minGapMs: 0 });
       e.configure({ id: db.getPairs()[0]!.id, localPath: localDir, remotePath: '/Sync' });
       write('both.txt', 'same');
       remote.put('/Sync/both.txt', 'same');
@@ -739,6 +747,140 @@ describe('SyncEngine', () => {
       };
       await engine.syncNow();
       expect(engine.getProgress().failures).toEqual([]);
+    });
+  });
+
+  describe('pauses between runs and backoff after server errors', () => {
+    const make = (opts: Partial<ConstructorParameters<typeof SyncEngine>[2]> = {}) => {
+      const e = new SyncEngine(remote, db, { watch: false, settleMs: 0, minGapMs: 0, ...opts });
+      e.configure({ id: db.getPairs()[0]!.id, localPath: localDir, remotePath: '/Sync' });
+      return e;
+    };
+    const serverError = (status: number): Error => new Error(`${status}: server trouble`);
+
+    it('a run requested during a run starts only after the minimum pause', async () => {
+      const e = make({ minGapMs: 200, intervalMs: 60_000 });
+      const idleAt: number[] = [];
+      const scanAt: number[] = [];
+      e.onProgress(p => {
+        if (p.phase === 'idle') idleAt.push(Date.now());
+        if (p.phase === 'scanning') scanAt.push(Date.now());
+      });
+      e.start();
+      await e.syncNow(); // lands while the first run is in progress: one repeat, after the pause
+      await vi.waitFor(() => expect(scanAt.length).toBeGreaterThanOrEqual(2), { timeout: 3000 });
+      await vi.waitFor(() => expect(e.getProgress().phase).toBe('idle')); // the repeat has ended
+      e.stop();
+      expect(scanAt[1]! - idleAt[0]!).toBeGreaterThanOrEqual(190);
+    });
+
+    it('a manual run starts at once, not after the pause', async () => {
+      const e = make({ minGapMs: 5000 });
+      await e.syncNow();
+      const began = Date.now();
+      await e.syncNow({ immediate: true });
+      expect(Date.now() - began).toBeLessThan(1000);
+    });
+
+    it('a manual run cuts a pause that is already running short', async () => {
+      const e = make({ minGapMs: 5000, intervalMs: 60_000 });
+      let scans = 0;
+      e.onProgress(p => {
+        if (p.phase === 'scanning') scans++;
+      });
+      e.start();
+      await e.syncNow(); // joins the first run: one repeat, held for the pause
+      await vi.waitFor(() => expect(e.getProgress().phase).toBe('idle'));
+      await new Promise(r => setTimeout(r, 100)); // the repeat is now waiting
+      expect(scans).toBe(1);
+      await e.syncNow({ immediate: true }); // wakes it
+      await vi.waitFor(() => expect(scans).toBe(2), { timeout: 1000 });
+      await vi.waitFor(() => expect(e.getProgress().phase).toBe('idle')); // the run has ended
+      e.stop();
+    });
+
+    it('the poll timer firing during a long run does not queue another run at once', async () => {
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>(resolve => (release = resolve));
+      const realList = remote.list.bind(remote);
+      remote.list = async d => {
+        await gate;
+        return realList(d);
+      };
+      const e = make({ intervalMs: 300 });
+      let scans = 0;
+      e.onProgress(p => {
+        if (p.phase === 'scanning') scans++;
+      });
+      e.start();
+      await new Promise(r => setTimeout(r, 350)); // a tick falls inside the blocked run
+      release();
+      await new Promise(r => setTimeout(r, 100)); // the run ends; the next tick is not due yet
+      expect(scans).toBe(1);
+      e.stop();
+    });
+
+    it('a file the Disk answers 5xx for is not requested again before its delay, which doubles', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        const e = make({ retryBaseMs: 1000, retryMaxMs: 3000 });
+        remote.put('/Sync/a.txt', 'a');
+        remote.downloadError = serverError(500);
+        await e.syncNow();
+        expect(remote.downloads).toBe(1);
+        expect(e.getProgress().failures).toHaveLength(1);
+
+        await e.syncNow(); // at once: no request, still reported as failed
+        expect(remote.downloads).toBe(1);
+        expect(e.getProgress().failures).toHaveLength(1);
+
+        vi.advanceTimersByTime(1001);
+        await e.syncNow(); // first delay (1 s) is over
+        expect(remote.downloads).toBe(2);
+        vi.advanceTimersByTime(1500);
+        await e.syncNow(); // the second delay is 2 s
+        expect(remote.downloads).toBe(2);
+        vi.advanceTimersByTime(600);
+        await e.syncNow();
+        expect(remote.downloads).toBe(3);
+        vi.advanceTimersByTime(2500);
+        await e.syncNow(); // the third would be 4 s, capped at 3 s: not yet
+        expect(remote.downloads).toBe(3);
+        vi.advanceTimersByTime(600);
+        await e.syncNow();
+        expect(remote.downloads).toBe(4);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('429 is backed off too, and a success clears the delay', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        const e = make({ retryBaseMs: 1000 });
+        remote.put('/Sync/a.txt', 'a');
+        remote.downloadError = serverError(429);
+        await e.syncNow();
+        await e.syncNow();
+        expect(remote.downloads).toBe(1);
+
+        remote.downloadError = null;
+        vi.advanceTimersByTime(1001);
+        await e.syncNow();
+        expect(readFileSync(local('a.txt'), 'utf8')).toBe('a');
+        expect(e.getProgress().failures).toEqual([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('other failures (404, a failed checksum) are retried on every run, without a delay', async () => {
+      const e = make({ retryBaseMs: 60_000 });
+      remote.put('/Sync/a.txt', 'a');
+      remote.downloadError = new Error('404: gone');
+      await e.syncNow();
+      await e.syncNow();
+      expect(remote.downloads).toBe(2);
     });
   });
 });

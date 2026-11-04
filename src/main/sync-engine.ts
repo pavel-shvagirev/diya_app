@@ -90,6 +90,12 @@ const CONFLICT_MARKER = /( \((?:conflict copy|конфликтная копия)
 export interface SyncEngineOptions {
   /** Poll interval for periodic runs. Default 60 000 ms. */
   intervalMs?: number;
+  /** Minimum pause between the end of one run and the start of the next. Default 5000 ms. */
+  minGapMs?: number;
+  /** Delay before a file that got a server error (5xx, 429) is tried again; doubles with each failure. Default 60 000 ms. */
+  retryBaseMs?: number;
+  /** Longest delay of that kind. Default 30 minutes. */
+  retryMaxMs?: number;
   /** Watch the local folder and sync shortly after changes. Default true. */
   watch?: boolean;
   /** How local deletions are performed (default: permanent `rm`). */
@@ -125,6 +131,9 @@ const MTIME_TOLERANCE_MS = 2;
 /** Longest file-name stem we keep when building a conflict-copy name (filesystems cap names at 255 bytes). */
 const MAX_STEM = 100;
 const MAX_DELETE_RATIO = 0.5;
+const DEFAULT_MIN_GAP_MS = 5000;
+const DEFAULT_RETRY_BASE_MS = 60_000;
+const DEFAULT_RETRY_MAX_MS = 30 * 60_000;
 const MIN_GUARDED_DELETES = 10;
 
 /** Files the engine never syncs: dotfiles, partial downloads, OS noise. */
@@ -177,6 +186,14 @@ export class SyncEngine {
   private deferred = false;
   private deferTimer: NodeJS.Timeout | null = null;
   private enabled = false;
+  /** When the last run ended (ms since epoch): runs keep `minGapMs` apart. */
+  private lastFinished = 0;
+  /** A manual run is waiting: the next run skips the pause. */
+  private immediate = false;
+  /** Ends the pause before a run early (set only while a run is waiting out the pause). */
+  private endPause: (() => void) | null = null;
+  /** Files the Disk answered with a server error: when to try them again. */
+  private readonly retries = new Map<string, { attempts: number; until: number }>();
   private readonly opts: Required<SyncEngineOptions>;
 
   constructor(
@@ -186,6 +203,9 @@ export class SyncEngine {
   ) {
     this.opts = {
       intervalMs: options.intervalMs ?? 60_000,
+      minGapMs: options.minGapMs ?? DEFAULT_MIN_GAP_MS,
+      retryBaseMs: options.retryBaseMs ?? DEFAULT_RETRY_BASE_MS,
+      retryMaxMs: options.retryMaxMs ?? DEFAULT_RETRY_MAX_MS,
       watch: options.watch ?? true,
       removeLocal: options.removeLocal ?? (p => rm(p, { recursive: true, force: true })),
       settleMs: options.settleMs ?? 2000,
@@ -215,6 +235,7 @@ export class SyncEngine {
   configure(pair: SyncPairPaths | null): void {
     this.stop();
     this.pair = pair;
+    this.retries.clear();
     const last = pair ? (this.db.getPair(pair.id)?.lastSync ?? null) : null;
     this.progress = emptyProgress(last);
     this.emit();
@@ -226,6 +247,8 @@ export class SyncEngine {
     this.enabled = true;
     this.progress = { ...this.progress, phase: 'idle', error: null };
     this.timer = setInterval(() => {
+      // A run that outlasts the interval must not be followed at once by another full scan.
+      if (this.running) return;
       logger.debug('sync', 'scheduled run');
       void this.syncNow();
     }, this.opts.intervalMs);
@@ -275,9 +298,16 @@ export class SyncEngine {
 
   // ── One reconciliation run ───────────────────────────────────
 
-  /** Reconcile once. Concurrent calls collapse into one follow-up run. */
-  async syncNow(): Promise<void> {
+  /**
+   * Reconcile once. Concurrent calls collapse into one follow-up run. Runs keep `minGapMs` apart
+   * unless `immediate` is set (the user pressed "Sync now").
+   */
+  async syncNow(options: { immediate?: boolean } = {}): Promise<void> {
     if (!this.pair) return;
+    if (options.immediate) {
+      this.immediate = true;
+      this.endPause?.();
+    }
     if (this.running) {
       this.rerun = true;
       logger.debug('sync', 'run requested while one is in progress — will repeat once it ends');
@@ -287,7 +317,25 @@ export class SyncEngine {
     try {
       do {
         this.rerun = false;
-        await this.runOnce(this.pair);
+        const wait = this.immediate ? 0 : this.lastFinished + this.opts.minGapMs - Date.now();
+        this.immediate = false;
+        if (wait > 0) {
+          await new Promise<void>(resolve => {
+            const timer = setTimeout(resolve, wait);
+            this.endPause = () => {
+              clearTimeout(timer);
+              resolve();
+            };
+          });
+          this.endPause = null;
+        }
+        const pair = this.pair;
+        if (!pair) break;
+        try {
+          await this.runOnce(pair);
+        } finally {
+          this.lastFinished = Date.now();
+        }
       } while (this.rerun && this.enabled);
     } finally {
       this.running = false;
@@ -341,7 +389,20 @@ export class SyncEngine {
     let doneBytes = 0;
     let doneFiles = 0;
 
+    const done = (op: Op): void => {
+      if (op.kind !== 'mkdirLocal' && op.kind !== 'mkdirRemote') doneFiles++;
+      this.patch({ doneFiles, doneBytes, current: null, failures: [...failures], conflicts });
+    };
+
     for (const op of ops) {
+      const hold = this.retryHold(op.rel);
+      if (hold > 0) {
+        // The Disk is failing on this file: no request until its delay is over.
+        failures.push(`${op.rel}: server error, next try in ${Math.ceil(hold / 1000)} s`);
+        logger.debug('sync', `${op.rel}: held back, next try in ${Math.ceil(hold / 1000)} s`);
+        done(op);
+        continue;
+      }
       const opStarted = Date.now();
       logger.info('sync', `▶ ${op.kind} ${op.rel}${'size' in op ? ` (${op.size} B)` : ''}`);
       try {
@@ -357,15 +418,16 @@ export class SyncEngine {
           })
         );
         doneBytes += bytes;
+        this.retries.delete(op.rel);
         if (op.kind === 'conflict') conflicts++;
         logger.debug('sync', `✓ ${op.kind} ${op.rel} (${Date.now() - opStarted} ms)`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         failures.push(`${op.rel}: ${message}`);
         logger.error('sync', `✗ ${op.kind} ${op.rel}: ${message}`);
+        this.noteFailure(op.rel, err);
       }
-      if (op.kind !== 'mkdirLocal' && op.kind !== 'mkdirRemote') doneFiles++;
-      this.patch({ doneFiles, doneBytes, current: null, failures: [...failures], conflicts });
+      done(op);
     }
 
     // Files that were still being written: look again shortly after they settle.
@@ -390,6 +452,24 @@ export class SyncEngine {
       current: null,
       lastSync: failures.length === 0 ? lastSync : this.progress.lastSync,
     });
+  }
+
+  /** Milliseconds left before `rel` may be tried again (0 when it may be tried now). */
+  private retryHold(rel: string): number {
+    const entry = this.retries.get(rel);
+    return entry ? Math.max(0, entry.until - Date.now()) : 0;
+  }
+
+  /** A server error (5xx, 429) delays the next try for this file, doubling each time; anything else clears it. */
+  private noteFailure(rel: string, err: unknown): void {
+    const status = errorStatus(err);
+    if (status === undefined || (status < 500 && status !== 429)) {
+      this.retries.delete(rel);
+      return;
+    }
+    const attempts = (this.retries.get(rel)?.attempts ?? 0) + 1;
+    const delay = Math.min(this.opts.retryBaseMs * 2 ** (attempts - 1), this.opts.retryMaxMs);
+    this.retries.set(rel, { attempts, until: Date.now() + delay });
   }
 
   // ── Scanning ─────────────────────────────────────────────────

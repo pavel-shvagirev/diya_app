@@ -46,6 +46,10 @@ One pair (local folder ⇄ Disk folder). Every run (60 s timer, local file event
 3. Execute: folders first, then files, deletions last. After an upload the Disk size is checked;
    a damaged copy is removed and reported.
 
+Runs are kept at least 5 s apart ("sync now" is exempt and starts at once), and a timer tick during a run queues nothing. A file the Disk
+answers with 5xx or 429 is not requested again for 1 min, then 2, 4 … up to 30 min (still reported
+as failed meanwhile).
+
 Safety rules: a file changed on both sides keeps both versions; a file whose size/md5 cannot be
 compared yet waits for the next run; files modified in the last 2 s are deferred; a run whose
 deletions exceed 50 % of the known files (and at least 10) is refused when the Disk listing looks
