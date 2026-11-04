@@ -854,6 +854,81 @@ describe('SyncEngine', () => {
       }
     });
 
+    it('pausing stops a run in flight before the next folder is listed', async () => {
+      remote.put('/Sync/a/x.txt', 'x');
+      remote.put('/Sync/b/y.txt', 'y');
+      const e = make();
+      const listed: string[] = [];
+      const realList = remote.list.bind(remote);
+      remote.list = async d => {
+        listed.push(d);
+        const out = await realList(d);
+        if (d === '/Sync') e.stop(); // the user unticks sync right after the first listing
+        return out;
+      };
+      await e.syncNow();
+      expect(listed).not.toContain('/Sync/a');
+      expect(listed).not.toContain('/Sync/b');
+      expect(remote.downloads).toBe(0);
+      expect(e.getProgress().phase).toBe('paused');
+      expect(e.getProgress().error).toBeNull(); // a pause is not an error
+      expect(existsSync(local('a/x.txt'))).toBe(false); // nothing is planned from a half-read tree
+    });
+
+    it('pausing stops a run in flight after the current file', async () => {
+      for (const n of ['a', 'b', 'c']) remote.put(`/Sync/${n}.txt`, n);
+      const e = make();
+      const realDownload = remote.download.bind(remote);
+      remote.download = async (...args) => {
+        await realDownload(...args);
+        e.stop();
+      };
+      await e.syncNow();
+      expect(remote.downloads).toBe(1);
+      expect(e.getProgress().phase).toBe('paused');
+      expect(e.getProgress().lastSync).toBeNull(); // an interrupted run is not a finished sync
+    });
+
+    it('a manual run after a pause is not cancelled by it', async () => {
+      for (const n of ['a', 'b']) remote.put(`/Sync/${n}.txt`, n);
+      const e = make();
+      const realDownload = remote.download.bind(remote);
+      let first = true;
+      remote.download = async (...args) => {
+        await realDownload(...args);
+        if (first) e.stop();
+        first = false;
+      };
+      await e.syncNow();
+      expect(remote.downloads).toBe(1);
+      await e.syncNow({ immediate: true });
+      expect(remote.downloads).toBe(2);
+    });
+
+    it('"Sync now" during a run does not queue a second full scan behind it', async () => {
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>(resolve => (release = resolve));
+      const realList = remote.list.bind(remote);
+      remote.list = async d => {
+        await gate;
+        return realList(d);
+      };
+      const e = make();
+      let scans = 0;
+      e.onProgress(p => {
+        if (p.phase === 'scanning') scans++;
+      });
+      e.start();
+      await new Promise(r => setTimeout(r, 50));
+      await e.syncNow({ immediate: true });
+      await e.syncNow({ immediate: true });
+      release();
+      await vi.waitFor(() => expect(e.getProgress().phase).toBe('idle'));
+      await new Promise(r => setTimeout(r, 100)); // a queued repeat would have begun by now
+      e.stop();
+      expect(scans).toBe(1);
+    });
+
     it('429 is backed off too, and a success clears the delay', async () => {
       vi.useFakeTimers({ toFake: ['Date'] });
       try {

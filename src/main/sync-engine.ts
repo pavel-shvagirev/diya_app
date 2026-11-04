@@ -174,6 +174,9 @@ function emptyProgress(lastSync: string | null = null): SyncProgress {
   };
 }
 
+/** Thrown inside a run when the user paused sync; ends the run quietly. */
+class RunCancelled extends Error {}
+
 export class SyncEngine {
   private pair: SyncPairPaths | null = null;
   private progress: SyncProgress = emptyProgress();
@@ -186,6 +189,8 @@ export class SyncEngine {
   private deferred = false;
   private deferTimer: NodeJS.Timeout | null = null;
   private enabled = false;
+  /** Bumped by every pause: a run that began under an older value stops at the next step. */
+  private stopGen = 0;
   /** When the last run ended (ms since epoch): runs keep `minGapMs` apart. */
   private lastFinished = 0;
   /** A manual run is waiting: the next run skips the pause. */
@@ -271,9 +276,10 @@ export class SyncEngine {
     void this.syncNow();
   }
 
-  /** Pause: stop the schedule and the watcher; a run in flight finishes its current file. */
+  /** Pause: stop the schedule and the watcher; a run in flight finishes its current step and ends. */
   stop(): void {
     this.enabled = false;
+    this.stopGen++;
     if (this.deferTimer) clearTimeout(this.deferTimer);
     this.deferTimer = null;
     if (this.timer) clearInterval(this.timer);
@@ -304,15 +310,18 @@ export class SyncEngine {
    */
   async syncNow(options: { immediate?: boolean } = {}): Promise<void> {
     if (!this.pair) return;
-    if (options.immediate) {
-      this.immediate = true;
-      this.endPause?.();
-    }
     if (this.running) {
+      if (options.immediate) {
+        // A click while a run is in progress: that run already reads the current state, so no
+        // second full scan is queued behind it (local changes still queue one through the watcher).
+        this.endPause?.();
+        return;
+      }
       this.rerun = true;
       logger.debug('sync', 'run requested while one is in progress — will repeat once it ends');
       return;
     }
+    if (options.immediate) this.immediate = true;
     this.running = true;
     try {
       do {
@@ -348,6 +357,8 @@ export class SyncEngine {
     this.deferred = false;
     this.emit();
     const runStarted = Date.now();
+    const gen = this.stopGen;
+    const cancelled = (): boolean => this.stopGen !== gen;
     logger.info('sync', 'run started', { local: pair.localPath, remote: pair.remotePath });
 
     let ops: Op[];
@@ -362,11 +373,12 @@ export class SyncEngine {
       );
       await mkdir(pair.localPath, { recursive: true });
       local = await this.scanLocal(pair.localPath);
-      remote = await this.scanRemote(pair.remotePath);
+      remote = await this.scanRemote(pair.remotePath, cancelled);
       logger.debug('sync', `scan: ${local.size} local, ${remote.size} remote, ${state.size} known`);
       ops = await this.plan(pair, local, remote, state);
       this.guardDeletes(ops, state, rootExisted);
     } catch (err) {
+      if (err instanceof RunCancelled) return this.endCancelled();
       const message = err instanceof Error ? err.message : String(err);
       logger.error('sync', `run aborted: ${message}`);
       this.patch({ phase: 'error', error: message });
@@ -395,6 +407,7 @@ export class SyncEngine {
     };
 
     for (const op of ops) {
+      if (cancelled()) return this.endCancelled();
       const hold = this.retryHold(op.rel);
       if (hold > 0) {
         // The Disk is failing on this file: no request until its delay is over.
@@ -454,6 +467,12 @@ export class SyncEngine {
     });
   }
 
+  /** A pause ended the run early: nothing is recorded as synced, and it is not an error. */
+  private endCancelled(): void {
+    logger.info('sync', 'run stopped: sync was paused');
+    this.patch({ phase: 'paused', current: null });
+  }
+
   /** Milliseconds left before `rel` may be tried again (0 when it may be tried now). */
   private retryHold(rel: string): number {
     const entry = this.retries.get(rel);
@@ -496,7 +515,10 @@ export class SyncEngine {
     return out;
   }
 
-  private async scanRemote(root: string): Promise<Map<string, RemoteEntry>> {
+  private async scanRemote(
+    root: string,
+    cancelled: () => boolean
+  ): Promise<Map<string, RemoteEntry>> {
     const out = new Map<string, RemoteEntry>();
     const rootPrefix = root === '/' ? '' : root;
     const queue = [root];
@@ -511,6 +533,7 @@ export class SyncEngine {
       }
     }
     while (queue.length) {
+      if (cancelled()) throw new RunCancelled();
       const dir = queue.shift() as string;
       for (const e of await this.remote.list(dir)) {
         if (isIgnored(e.name)) continue;

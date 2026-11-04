@@ -34,6 +34,7 @@ versions: [SemVer](https://semver.org/).
 - Sync runs are kept at least 5 s apart, except "Sync now", which starts at once (a run longer than the 60 s timer was followed by the
   next at once), and a file the Disk answers with 5xx or 429 is retried after 1 min, 2, 4 … up to
   30 min instead of on every run.
+- Unticking sync stops a run in flight (between folders and between files) instead of letting it finish; "Sync now" during a run no longer queues a second full scan behind it.
 - Electron 45; better-sqlite3 13; electron-builder 26.
 - Creating public links is disabled (existing links can be revoked).
 - API client: a timeout on every request; reads are retried after network failures, writes are

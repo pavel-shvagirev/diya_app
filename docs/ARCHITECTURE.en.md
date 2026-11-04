@@ -49,6 +49,7 @@ One pair (local folder ⇄ Disk folder). Every run (60 s timer, local file event
 Runs are kept at least 5 s apart ("sync now" is exempt and starts at once), and a timer tick during a run queues nothing. A file the Disk
 answers with 5xx or 429 is not requested again for 1 min, then 2, 4 … up to 30 min (still reported
 as failed meanwhile).
+A pause (`stop()`) ends a run in flight between listed folders and between operations: the run is not recorded as finished and is not an error. A "sync now" click during a run queues no repeat.
 
 Safety rules: a file changed on both sides keeps both versions; a file whose size/md5 cannot be
 compared yet waits for the next run; files modified in the last 2 s are deferred; a run whose
