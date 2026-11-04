@@ -48,11 +48,11 @@ Unofficial desktop client for [Yandex Disk](https://disk.yandex.com/): a compact
 
 Download the file for your system from the [Releases](../../releases) page.
 
-| System  | File                                               | Notes                                                                                                                                                                               |
-| ------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| macOS   | `.dmg` (Apple Silicon)                             | Not notarized. First start: System Settings → Privacy & Security → **Open Anyway** (older macOS: right-click → Open), or `xattr -dr com.apple.quarantine "/Applications/Diya.app"`. |
-| Windows | `…-win-x64.exe` (installer) or the portable `.exe` | Not signed: SmartScreen shows "unknown publisher" (More info → Run anyway).                                                                                                         |
-| Linux   | `.AppImage`, `.deb`, `.rpm`                        | `chmod +x *.AppImage && ./*.AppImage`, `sudo apt install ./*.deb`, `sudo dnf install ./*.rpm`.                                                                                      |
+| System  | File                                                    | Notes                                                                                                                                                                               |
+| ------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS   | `.dmg` (Apple Silicon)                                  | Not notarized. First start: System Settings → Privacy & Security → **Open Anyway** (older macOS: right-click → Open), or `xattr -dr com.apple.quarantine "/Applications/Diya.app"`. |
+| Windows | `…-win-x64.exe` (installer) or `…-win-x64-portable.exe` | Not signed: SmartScreen shows "unknown publisher" (More info → Run anyway).                                                                                                         |
+| Linux   | `.AppImage`, `.deb`, `.rpm`                             | `chmod +x *.AppImage && ./*.AppImage`, `sudo apt install ./*.deb`, `sudo dnf install ./*.rpm`.                                                                                      |
 
 ## Sign in
 

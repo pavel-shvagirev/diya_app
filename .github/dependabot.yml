@@ -5,6 +5,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # Major jumps need a planned migration (peer ranges, Electron's Node, config), not a bot PR.
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
     groups:
       # Peer ranges tie these together: one PR, or the install fails (ERESOLVE).
       test-toolchain:

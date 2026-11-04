@@ -134,6 +134,9 @@
       ],
       "icon": "build/icon.png"
     },
+    "portable": {
+      "artifactName": "${name}-${version}-${os}-${arch}-portable.${ext}"
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
