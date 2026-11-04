@@ -36,7 +36,7 @@ Unofficial desktop client for [Yandex Disk](https://disk.yandex.com/): a compact
   delete forever, empty trash.
 - **Sync:** one pair "local folder ⇄ Disk folder", two-way, every 60 s and on local changes.
   A file changed on both sides keeps both versions (`name (conflict copy YYYY-MM-DD HH-mm).ext`; "конфликтная копия" in the Russian interface). Deletions on
-  one side move the file to the trash of the other side. A run that would delete a suspicious
+  one side move the file or folder to the trash of the other side. A run that would delete a suspicious
   share of the files is refused. Pause/resume from the tray.
 - **Log window** (`Ctrl/Cmd+Shift+L`): API calls, transfers and every sync decision with its
   reason; categories, verbosity, search. Tokens and signed links are never written to it.
@@ -163,7 +163,7 @@ is not covered by the MIT license ([assets/brand/NOTICE.md](assets/brand/NOTICE.
 
 ## Limitations
 
-One sync pair. Folders are not deleted on the other side (files are).
+One sync pair.
 
 ## License
 

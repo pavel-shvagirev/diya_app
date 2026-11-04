@@ -67,11 +67,23 @@ folder. When the sync root is `/` (the whole Disk) and the remote supports it
 a run after 30 minutes (`fullScanMs`) and a run after the Disk refused the flat list (HTTP 400,
 remembered for the session) walk the folders; the others read the flat list: one request per
 1000 files, only the fields the engine uses (`fields`). The flat list has no folders, so they
-come from the paths of the files and from the last full scan (an empty folder created on the Disk
-in between is seen at the next full scan). The list is read page by page while the Disk
+come from the paths of the files; empty ones are remembered from the last full scan, but only as a
+guess: a flat run neither creates nor deletes a folder because of it (an empty folder created or
+deleted on the Disk in between is dealt with at the next full scan). Changes made through the file
+manager (delete, copy, move, new folder, upload, restore from the trash) call
+`SyncEngine.invalidateRemote()`, so the next run reads the whole tree. The list is read page by page while the Disk
 changes, so a file can slip through: a file that is only _missing_ from a flat list is deleted
 locally only after a `stat` answers 404. Any other failure of the flat list ends the run.
 A sync folder other than `/` always walks its folders.
+
+**Folders.** A folder seen on both sides at a run is recorded in `sync_state`. A recorded folder
+that is missing on one side was deleted there, and the deletion is carried to the other side (the
+Disk trash, or the system trash), deepest folder last, but only if nothing is left inside that was
+not deleted too. If the other side holds a file that was not deleted (added meanwhile, changed,
+or hidden), the folder is made again on the side that lost it and the content decides; a local
+folder that still holds hidden files of the user is kept. A folder never seen on both sides is
+new and is created on the other side. Folder deletions are decided only after a full scan, never
+from the absence of a folder in the flat list.
 
 Safety rules: a file changed on both sides keeps both versions; a file whose size/md5 cannot be
 compared yet waits for the next run; files modified in the last 2 s are deferred; a run whose

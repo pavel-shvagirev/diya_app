@@ -85,6 +85,7 @@ function makeEngine() {
     start: vi.fn(),
     stop: vi.fn(),
     syncNow: vi.fn().mockResolvedValue(undefined),
+    invalidateRemote: vi.fn(),
     getProgress: vi.fn(() => ({ phase: 'idle', doneFiles: 2, totalFiles: 5 })),
     onProgress: vi.fn((f: (p: unknown) => void) => {
       cb = f;
@@ -180,6 +181,36 @@ describe('IPC handlers', () => {
     registerIpcHandlers(win);
     expect(() => call(CH.FILES_LIST, '/')).toThrow('Not signed in');
     expect(() => call(CH.FILES_QUOTA)).toThrow('Not signed in');
+  });
+
+  it('every change the file manager makes on the Disk tells the sync engine to read the whole tree', async () => {
+    const c = makeClient();
+    const e = makeEngine();
+    registerIpcHandlers(win, c as never, makeDb() as never, e as never);
+    for (const [channel, args] of [
+      [CH.FILES_DELETE, ['/a']],
+      [CH.FILES_COPY, ['/a', '/b']],
+      [CH.FILES_MOVE, ['/a', '/b']],
+      [CH.FILES_MKDIR, ['/a']],
+      [CH.TRASH_RESTORE, ['/a_1']],
+    ] as Array<[string, unknown[]]>) {
+      e.invalidateRemote.mockClear();
+      await call(channel, ...args);
+      expect(e.invalidateRemote, channel).toHaveBeenCalledTimes(1);
+    }
+    // also when the call fails: the Disk may have changed before the error
+    c.deleteFile.mockRejectedValueOnce(new Error('500: boom'));
+    e.invalidateRemote.mockClear();
+    await expect(call(CH.FILES_DELETE, '/a')).rejects.toThrow('boom');
+    expect(e.invalidateRemote).toHaveBeenCalledTimes(1);
+  });
+
+  it('an upload tells the sync engine too', async () => {
+    const e = makeEngine();
+    registerIpcHandlers(win, makeClient() as never, makeDb() as never, e as never);
+    const f = tmpFile('up.txt');
+    await call(CH.FILES_UPLOAD, '/', [f]);
+    expect(e.invalidateRemote).toHaveBeenCalled();
   });
 
   it('a folder inside the trash can be listed; its path is validated', async () => {

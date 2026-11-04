@@ -122,6 +122,11 @@ class FakeRemote implements RemoteStorage {
     onProgress(f.data.length, f.data.length);
   }
   async remove(path: string, _signal?: AbortSignal): Promise<void> {
+    if (this.dirs.has(path)) {
+      for (const f of [...this.files.keys()]) if (f.startsWith(`${path}/`)) this.files.delete(f);
+      for (const d of [...this.dirs])
+        if (d === path || d.startsWith(`${path}/`)) this.dirs.delete(d);
+    }
     this.files.delete(path);
     this.removed.push(path);
   }
@@ -768,6 +773,96 @@ describe('SyncEngine', () => {
     });
   });
 
+  describe('folders follow deletions, like files do', () => {
+    /** A synced folder `d` holding `a.txt`, present on both sides, with its state recorded. */
+    const synced = async (): Promise<void> => {
+      remote.put('/Sync/d/a.txt', 'a');
+      await engine.syncNow();
+      expect(existsSync(local('d/a.txt'))).toBe(true);
+    };
+
+    it('a folder deleted on the Disk goes away locally with its synced files', async () => {
+      await synced();
+      await remote.remove('/Sync/d');
+      await engine.syncNow();
+      expect(existsSync(local('d'))).toBe(false);
+      expect(engine.getProgress()).toMatchObject({ error: null, failures: [] });
+    });
+
+    it('a folder deleted locally is deleted on the Disk, files first', async () => {
+      await synced();
+      remote.removed.length = 0;
+      rmSync(local('d'), { recursive: true });
+      await engine.syncNow();
+      expect(remote.dirs.has('/Sync/d')).toBe(false);
+      expect(remote.files.has('/Sync/d/a.txt')).toBe(false);
+      expect(remote.removed).toEqual(['/Sync/d/a.txt', '/Sync/d']);
+    });
+
+    it('nested folders go deepest first', async () => {
+      remote.put('/Sync/p/q/f.txt', 'f');
+      await engine.syncNow();
+      await remote.remove('/Sync/p');
+      await engine.syncNow();
+      expect(existsSync(local('p'))).toBe(false);
+    });
+
+    it('a folder deleted on both sides is simply forgotten, never created again', async () => {
+      remote.dirs.add('/Sync/e');
+      await engine.syncNow();
+      expect(existsSync(local('e'))).toBe(true);
+      remote.dirs.delete('/Sync/e');
+      rmSync(local('e'), { recursive: true });
+      remote.mkdirCalls.length = 0;
+      await engine.syncNow();
+      await engine.syncNow();
+      expect(existsSync(local('e'))).toBe(false);
+      expect(remote.mkdirCalls).toEqual([]);
+      expect(remote.dirs.has('/Sync/e')).toBe(false);
+    });
+
+    it('a file added on the Disk to a folder deleted locally keeps the folder (nothing is lost)', async () => {
+      await synced();
+      rmSync(local('d'), { recursive: true });
+      remote.put('/Sync/d/new.txt', 'n');
+      await engine.syncNow();
+      expect(readFileSync(local('d/new.txt'), 'utf8')).toBe('n');
+      expect(remote.files.has('/Sync/d/new.txt')).toBe(true);
+      expect(remote.dirs.has('/Sync/d')).toBe(true);
+    });
+
+    it('a file added locally to a folder deleted on the Disk keeps it, and the folder is made again on the Disk', async () => {
+      await synced();
+      await remote.remove('/Sync/d');
+      write('d/mine.txt', 'm');
+      remote.mkdirCalls.length = 0;
+      await engine.syncNow();
+      expect(remote.mkdirCalls).toContain('/Sync/d');
+      expect(remote.files.get('/Sync/d/mine.txt')?.data.toString()).toBe('m');
+      expect(existsSync(local('d/mine.txt'))).toBe(true);
+      expect(existsSync(local('d/a.txt'))).toBe(false); // that one was deleted on the Disk
+    });
+
+    it('a folder that still holds a hidden file of the user is kept, and not recreated on the Disk', async () => {
+      await synced();
+      write('d/.env', 'secret');
+      await remote.remove('/Sync/d');
+      await engine.syncNow();
+      await engine.syncNow();
+      expect(readFileSync(local('d/.env'), 'utf8')).toBe('secret');
+      expect(remote.dirs.has('/Sync/d')).toBe(false);
+      expect(engine.getProgress().failures).toEqual([]);
+    });
+
+    it('a folder that was never synced before is created, not deleted', async () => {
+      mkdirSync(local('fresh'));
+      remote.dirs.add('/Sync/other');
+      await engine.syncNow();
+      expect(remote.dirs.has('/Sync/fresh')).toBe(true);
+      expect(existsSync(local('other'))).toBe(true);
+    });
+  });
+
   describe('flat file list and the schedule of full scans', () => {
     let rootDir: string;
     const makeRoot = (opts: Partial<ConstructorParameters<typeof SyncEngine>[2]> = {}) => {
@@ -926,6 +1021,46 @@ describe('SyncEngine', () => {
       await engine.syncNow();
       await engine.syncNow();
       expect(remote.flatCalls).toBe(0);
+    });
+
+    it('a folder deleted on the Disk and locally is not brought back by the cached folder list', async () => {
+      remote.dirs.add('/gone');
+      const e = makeRoot();
+      await e.syncNow();
+      expect(existsSync(inRoot('gone'))).toBe(true);
+      remote.dirs.delete('/gone');
+      rmSync(inRoot('gone'), { recursive: true });
+      resetCalls();
+      await e.syncNow(); // a flat run
+      await e.syncNow();
+      expect(remote.flatCalls).toBe(2);
+      expect(existsSync(inRoot('gone'))).toBe(false);
+      expect(remote.mkdirCalls).toEqual([]);
+    });
+
+    it('a folder known only from the cache is neither created nor deleted by a flat run', async () => {
+      remote.dirs.add('/cached');
+      const e = makeRoot();
+      await e.syncNow();
+      rmSync(inRoot('cached'), { recursive: true }); // deleted locally, still on the Disk
+      resetCalls();
+      await e.syncNow();
+      expect(existsSync(inRoot('cached'))).toBe(false);
+      expect(remote.removed).not.toContain('/cached'); // decided by the next full scan
+      await e.syncNow({ immediate: true }); // a full scan: now the deletion is carried over
+      expect(remote.dirs.has('/cached')).toBe(false);
+    });
+
+    it('invalidateRemote makes the next run read the whole tree', async () => {
+      remote.put('/a/x.txt', 'x');
+      const e = makeRoot();
+      await e.syncNow();
+      remote.dirs.add('/fresh');
+      e.invalidateRemote();
+      resetCalls();
+      await e.syncNow();
+      expect(remote.listCalls.length).toBeGreaterThan(0);
+      expect(existsSync(inRoot('fresh'))).toBe(true);
     });
 
     it('files in hidden folders stay out, as in the folder walk', async () => {

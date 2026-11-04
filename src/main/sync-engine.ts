@@ -150,6 +150,9 @@ const DEFAULT_RETRY_MAX_MS = 30 * 60_000;
 const DEFAULT_FULL_SCAN_MS = 30 * 60_000;
 const MIN_GUARDED_DELETES = 10;
 
+/** Files the OS puts into folders by itself: a folder holding only these counts as empty. */
+const FOLDER_JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
+
 /** Files the engine never syncs: dotfiles, partial downloads, OS noise. */
 function isIgnored(name: string): boolean {
   return name.startsWith('.') || name.endsWith('.part');
@@ -212,6 +215,10 @@ export class SyncEngine {
   private flatBroken = false;
   /** Folders as the last full scan or our own mkdir saw them: a flat list shows no empty ones. */
   private knownDirs = new Map<string, RemoteEntry>();
+  /** Folders of the current run that come only from `knownDirs`, not from the Disk itself. */
+  private assumedDirs = new Set<string>();
+  /** The current run read the flat list: the absence of a folder in it proves nothing. */
+  private flatRun = false;
   /** When the last run ended (ms since epoch): runs keep `minGapMs` apart. */
   private lastFinished = 0;
   /** A manual run is waiting: the next run skips the pause. */
@@ -258,6 +265,11 @@ export class SyncEngine {
     };
   }
 
+  /** The Disk was changed from outside the engine (the file manager): read the whole tree next. */
+  invalidateRemote(): void {
+    this.fullNext = true;
+  }
+
   /** Point the engine at a pair. Stops any running schedule; does not start it. */
   configure(pair: SyncPairPaths | null): void {
     this.stop();
@@ -265,6 +277,7 @@ export class SyncEngine {
     this.retries.clear();
     this.lastFullScan = 0;
     this.knownDirs.clear();
+    this.assumedDirs.clear();
     this.fullNext = false;
     this.flatBroken = false;
     const last = pair ? (this.db.getPair(pair.id)?.lastSync ?? null) : null;
@@ -423,6 +436,7 @@ export class SyncEngine {
       await mkdir(pair.localPath, { recursive: true });
       local = await this.scanLocal(pair.localPath);
       ({ entries: remote, flat } = await this.scanRemote(pair.remotePath, signal));
+      this.flatRun = flat;
       logger.debug(
         'sync',
         `scan: ${local.size} local, ${remote.size} remote (${flat ? 'flat list' : 'folder walk'}), ${state.size} known`
@@ -609,6 +623,7 @@ export class SyncEngine {
     this.lastFullScan = Date.now();
     this.fullNext = false;
     this.knownDirs = new Map([...entries].filter(([, e]) => e.isDir));
+    this.assumedDirs = new Set();
     return { entries, flat: false };
   }
 
@@ -625,7 +640,7 @@ export class SyncEngine {
 
   private async scanFlat(signal: AbortSignal): Promise<Map<string, RemoteEntry>> {
     const files = (await this.remote.listAllFiles?.(signal)) ?? [];
-    const out = new Map(this.knownDirs);
+    const out = new Map<string, RemoteEntry>();
     for (const e of files) {
       const rel = e.path.slice(1);
       const parts = rel.split('/');
@@ -639,6 +654,14 @@ export class SyncEngine {
         }
       }
       out.set(rel, e);
+    }
+    // Empty folders are not in the flat list. The ones seen earlier are kept so that they are not
+    // created again, but only as a guess: no run creates or deletes anything because of one.
+    this.assumedDirs = new Set();
+    for (const [rel, dir] of this.knownDirs) {
+      if (out.has(rel)) continue;
+      out.set(rel, dir);
+      this.assumedDirs.add(rel);
     }
     return out;
   }
@@ -696,6 +719,9 @@ export class SyncEngine {
     const dirsDown: Op[] = [];
     const files: Op[] = [];
     const deletes: Op[] = [];
+    /** Folders that were on both sides at the last run and are now missing on one side. */
+    const goneOnDisk: string[] = [];
+    const goneLocally: string[] = [];
     const rels = new Set([...local.keys(), ...remote.keys(), ...state.keys()]);
 
     /** Add an operation and record why it was chosen. */
@@ -725,12 +751,24 @@ export class SyncEngine {
       });
 
       if ((l?.isDir ?? false) || (r?.isDir ?? false) || (s?.isDir ?? false)) {
-        // Directories are only created (never deleted) — deleting a folder
-        // that holds unsynced files on the other side would lose data.
-        if (l?.isDir && !r)
-          decide(dirsUp, { kind: 'mkdirRemote', rel }, 'folder exists only locally');
-        if (r?.isDir && !l)
-          decide(dirsDown, { kind: 'mkdirLocal', rel }, 'folder exists only on the Disk');
+        // A folder that was on both sides at the last run and is gone from one of them was
+        // deleted there: the deletion is carried over, unless the other side holds something that
+        // was not deleted (second pass below). A folder never seen on both sides is new.
+        const known = s?.isDir === true;
+        if (l?.isDir && r?.isDir) {
+          if (!known) this.recordDir(pair, rel);
+        } else if (l?.isDir && !r) {
+          if (!known) decide(dirsUp, { kind: 'mkdirRemote', rel }, 'folder exists only locally');
+          else if (this.flatRun)
+            note(rel, 'folder not in the flat list: left to the next full scan');
+          else goneOnDisk.push(rel);
+        } else if (r?.isDir && !l) {
+          if (this.assumedDirs.has(rel))
+            note(rel, 'folder known only from an earlier scan: left alone');
+          else if (!known)
+            decide(dirsDown, { kind: 'mkdirLocal', rel }, 'folder exists only on the Disk');
+          else goneLocally.push(rel);
+        }
         continue;
       }
 
@@ -823,7 +861,79 @@ export class SyncEngine {
         note(rel, 'gone from both sides — forgotten');
       }
     }
-    return [...dirsUp, ...dirsDown, ...files, ...deletes];
+
+    // Second pass: a folder is deleted only if nothing is left in it that was not deleted too;
+    // otherwise the folder comes back on the side that lost it, and the content decides.
+    const deepestFirst = (a: string, b: string): number =>
+      b.split('/').length - a.split('/').length;
+    const under = (keys: Iterable<string>, dir: string): string[] =>
+      [...keys].filter(k => k.startsWith(`${dir}/`));
+    const filesGoneOnDisk = new Set(deletes.filter(o => o.kind === 'deleteLocal').map(o => o.rel));
+    const filesGoneLocally = new Set(
+      deletes.filter(o => o.kind === 'deleteRemote').map(o => o.rel)
+    );
+    const dirDeletes: Op[] = [];
+    const removedLocal = new Set<string>();
+    for (const rel of goneOnDisk.sort(deepestFirst)) {
+      const left = under(local.keys(), rel).filter(
+        k => !filesGoneOnDisk.has(k) && !removedLocal.has(k)
+      );
+      if (left.length === 0) {
+        removedLocal.add(rel);
+        decide(
+          dirDeletes,
+          { kind: 'deleteLocal', rel },
+          'folder was deleted on the Disk, nothing unsynced inside'
+        );
+      } else {
+        decide(
+          dirsUp,
+          { kind: 'mkdirRemote', rel },
+          'folder was deleted on the Disk, but holds local files that were not: made again'
+        );
+      }
+    }
+    const removedRemote = new Set<string>();
+    for (const rel of goneLocally.sort(deepestFirst)) {
+      const left = under(remote.keys(), rel).filter(
+        k => !filesGoneLocally.has(k) && !removedRemote.has(k)
+      );
+      if (left.length === 0) {
+        removedRemote.add(rel);
+        decide(
+          dirDeletes,
+          { kind: 'deleteRemote', rel },
+          'folder was deleted locally, nothing unsynced on the Disk'
+        );
+      } else {
+        decide(
+          dirsDown,
+          { kind: 'mkdirLocal', rel },
+          'folder was deleted locally, but holds files on the Disk that were not: made again'
+        );
+      }
+    }
+    const byPath = (a: Op, b: Op): number => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0);
+    return [...dirsUp.sort(byPath), ...dirsDown.sort(byPath), ...files, ...deletes, ...dirDeletes];
+  }
+
+  private recordDir(pair: SyncPairPaths, rel: string): void {
+    this.db.setSyncState(pair.id, {
+      relPath: rel,
+      isDir: true,
+      localSize: 0,
+      localMtimeMs: 0,
+      remoteSize: 0,
+      remoteModified: '',
+    });
+  }
+
+  /** Remove a local folder only if it is empty (the user's hidden files count); true if removed. */
+  private async removeEmptyDir(full: string): Promise<boolean> {
+    const left = (await readdir(full).catch(() => [])).filter(n => !FOLDER_JUNK.has(n));
+    if (left.length > 0) return false;
+    await this.opts.removeLocal(full);
+    return true;
   }
 
   private localChanged(l: LocalEntry, s: { localSize: number; localMtimeMs: number }): boolean {
@@ -965,9 +1075,18 @@ export class SyncEngine {
     switch (op.kind) {
       case 'mkdirLocal':
         await mkdir(full, { recursive: true });
+        this.recordDir(pair, op.rel);
+        this.knownDirs.set(op.rel, {
+          path: rfull,
+          name: path.basename(rfull),
+          isDir: true,
+          size: 0,
+          modified: '',
+        });
         return 0;
       case 'mkdirRemote':
         await this.remote.mkdir(rfull, signal);
+        this.recordDir(pair, op.rel);
         this.knownDirs.set(op.rel, {
           path: rfull,
           name: path.basename(rfull),
@@ -1017,9 +1136,17 @@ export class SyncEngine {
       case 'deleteRemote':
         await this.remote.remove(rfull, signal);
         this.db.removeSyncState(pair.id, op.rel);
+        this.knownDirs.delete(op.rel);
         return 0;
       case 'deleteLocal':
-        await this.opts.removeLocal(full);
+        if (local.get(op.rel)?.isDir) {
+          if (!(await this.removeEmptyDir(full))) {
+            logger.warn('sync', `${op.rel}: folder kept, it still holds files that are not synced`);
+            return 0;
+          }
+        } else {
+          await this.opts.removeLocal(full);
+        }
         this.db.removeSyncState(pair.id, op.rel);
         local.delete(op.rel);
         return 0;

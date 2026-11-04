@@ -37,6 +37,10 @@ versions: [SemVer](https://semver.org/).
   tree is read in full on the first run, on "Sync now", every 30 minutes, and if the Disk refuses
   the flat list. A file missing from that list is deleted locally only after the Disk confirms it
   is gone.
+- Folders follow deletions like files do: a folder deleted on one side is deleted on the other
+  (to the Disk trash or the system trash) once nothing unsynced is left inside; if something is,
+  the folder is made again on the side that lost it and nothing is lost. A folder with hidden
+  files of yours is kept. Changes made in the file manager are seen by the next sync run.
 - Free space is checked before an upload of 64 MB or more: a file that cannot fit fails at once
   with the numbers instead of after a long transfer.
 

@@ -131,6 +131,14 @@ export function registerIpcHandlers(
     return apiClient;
   };
 
+  /**
+   * The file manager changed the Disk behind the sync engine's back: its picture of the folder
+   * tree is out of date, so the next run reads the whole tree. Also after a failed call: the Disk
+   * may have changed before the error.
+   */
+  const changesDisk = <T>(work: Promise<T>): Promise<T> =>
+    work.finally(() => syncEngine?.invalidateRemote());
+
   // ── Auth ───────────────────────────────────────────────────
 
   reg(CH.AUTH_LOGIN, async () => await needAuth().start());
@@ -187,21 +195,21 @@ export function registerIpcHandlers(
   });
   reg(CH.FILES_DELETE, (_e, p: string, permanently?: boolean) => {
     validateRemotePath(p);
-    return needClient().deleteFile(p, permanently ?? false);
+    return changesDisk(needClient().deleteFile(p, permanently ?? false));
   });
   reg(CH.FILES_COPY, (_e, s: string, t: string) => {
     validateRemotePath(s);
     validateRemotePath(t);
-    return needClient().copyFile(s, t);
+    return changesDisk(needClient().copyFile(s, t));
   });
   reg(CH.FILES_MOVE, (_e, s: string, t: string) => {
     validateRemotePath(s);
     validateRemotePath(t);
-    return needClient().moveFile(s, t);
+    return changesDisk(needClient().moveFile(s, t));
   });
   reg(CH.FILES_MKDIR, (_e, p: string) => {
     validateRemotePath(p);
-    return needClient().mkdir(p);
+    return changesDisk(needClient().mkdir(p));
   });
   reg(CH.FILES_PUBLISH, async (_e, p: string) => {
     // Switched off until Task 24; refuse here too so a compromised renderer cannot publish.
@@ -251,34 +259,39 @@ export function registerIpcHandlers(
   reg(CH.FILES_UPLOAD, async (_e, remoteDir: string, localPaths?: string[]) => {
     validateRemotePath(remoteDir);
     const client = needClient();
-    let files = localPaths;
-    if (!files) {
-      const picked = await dialog.showOpenDialog(win, {
-        properties: ['openFile', 'multiSelections'],
-      });
-      if (picked.canceled) return;
-      files = picked.filePaths;
-    }
-    for (const local of files) {
-      validateLocalPath(local);
-      let plan;
-      try {
-        plan = await expandLocal(local, remoteDir);
-        for (const dir of plan.dirs) {
-          // An existing folder (409) is fine: its contents are still uploaded.
-          await client.mkdir(dir).catch((e: unknown) => {
-            if (errorStatus(e) !== 409) throw e;
-          });
+    // Uploading creates files and folders on the Disk, also when it fails halfway.
+    try {
+      let files = localPaths;
+      if (!files) {
+        const picked = await dialog.showOpenDialog(win, {
+          properties: ['openFile', 'multiSelections'],
+        });
+        if (picked.canceled) return;
+        files = picked.filePaths;
+      }
+      for (const local of files) {
+        validateLocalPath(local);
+        let plan;
+        try {
+          plan = await expandLocal(local, remoteDir);
+          for (const dir of plan.dirs) {
+            // An existing folder (409) is fine: its contents are still uploaded.
+            await client.mkdir(dir).catch((e: unknown) => {
+              if (errorStatus(e) !== 409) throw e;
+            });
+          }
+        } catch (err) {
+          await tracked(path.basename(local), 'upload', () => Promise.reject(err));
+          continue;
         }
-      } catch (err) {
-        await tracked(path.basename(local), 'upload', () => Promise.reject(err));
-        continue;
+        for (const file of plan.files) {
+          await tracked(path.relative(path.dirname(local), file.local), 'upload', cb =>
+            uploadFile(client, file.local, file.remote, false, cb).then(() => undefined)
+          );
+        }
       }
-      for (const file of plan.files) {
-        await tracked(path.relative(path.dirname(local), file.local), 'upload', cb =>
-          uploadFile(client, file.local, file.remote, false, cb).then(() => undefined)
-        );
-      }
+    } finally {
+      syncEngine?.invalidateRemote();
     }
   });
 
@@ -326,8 +339,8 @@ export function registerIpcHandlers(
   });
   reg(CH.TRASH_RESTORE, (_e, p: string, name?: unknown) => {
     validateRemotePath(p);
-    if (name === undefined) return needClient().restoreFromTrash(p);
-    return needClient().restoreFromTrash(p, validateResourceName(name));
+    if (name === undefined) return changesDisk(needClient().restoreFromTrash(p));
+    return changesDisk(needClient().restoreFromTrash(p, validateResourceName(name)));
   });
   reg(CH.TRASH_DELETE, (_e, p: string) => {
     validateRemotePath(p);
