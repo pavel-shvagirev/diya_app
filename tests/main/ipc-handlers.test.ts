@@ -394,7 +394,7 @@ describe('IPC handlers', () => {
       expect(downloadFile.mock.calls[0][1]).toBe('/a.txt');
       // The size and md5 the Disk reported go along, so the download is verified.
       expect(downloadFile.mock.calls[0][5]).toEqual({ size: 3, md5: 'abc123' });
-      expect(downloadFile.mock.calls[0][2]).toBe(path.join(dest, 'a.txt'));
+      expect(downloadFile.mock.calls[0][2]).toBe(path.resolve(dest, 'a.txt'));
     });
 
     it('downloads a folder recursively keeping its structure', async () => {
