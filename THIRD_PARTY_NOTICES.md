@@ -20,6 +20,6 @@ from it by `scripts/make-icons.py`.
 
 ## npm dependencies
 
-Runtime dependencies (Electron, React, Zustand, better-sqlite3, chokidar) and their licenses
+Runtime dependencies (Electron, React, Zustand, better-sqlite3, chokidar, undici) and their licenses
 are listed by `npm ls --omit=dev` and in each package's own `LICENSE` file; Electron's
 bundled Chromium licenses ship with the application (`LICENSES.chromium.html`).

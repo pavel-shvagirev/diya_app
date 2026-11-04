@@ -1,6 +1,6 @@
 {
   "name": "diya",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Unofficial cross-platform desktop client for Yandex Disk: file manager, two-way folder sync, trash",
   "author": {

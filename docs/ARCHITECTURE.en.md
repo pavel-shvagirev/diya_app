@@ -18,6 +18,9 @@ Electron app, three processes of code:
   publish/unpublish, trash with its folders and restore under a new name, operations). Retries
   429/5xx with backoff, polls 202 operations (only on the API origin), on 401 tries the refresh
   token once and otherwise signs out. Calls take an optional `AbortSignal`.
+- **`network.ts`** — makes every `fetch` of the main process go through undici 8 (HTTP/1.1), because
+  the client bundled with Electron 45 can crash the process while a download is being written
+  (nodejs/undici#5360). Called first in `main.ts`.
 - **`oauth.ts`, `auth-service.ts`, `app-config.ts`, `token-store.ts`** — sign-in by the Yandex
   OAuth _device flow_ (code shown in the app, confirmed in a browser; no redirect URI; the user's own application ID
   and secret), token refresh, Client ID resolution (typed → `YADISK_CLIENT_ID`;
