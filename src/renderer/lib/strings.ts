@@ -68,6 +68,8 @@ const ru = {
     'Какие записи показывать: error — только ошибки … trace — всё, включая тела ответов API',
   logTipRecording:
     'С какой детальностью программа вообще собирает записи. trace включайте на время поиска проблемы',
+  logTraceWarning:
+    'Уровень trace: в журнал и в файл попадают полные ответы Диска с именами и путями ваших файлов. Не отправляйте и не публикуйте такой файл; для диагностики обычно хватает debug.',
   logTipCategory: 'Показать или скрыть категорию',
   logTipClear: 'Очистить окно (файл журнала не меняется)',
   logTipCopy: 'Скопировать показанные записи в буфер обмена',
@@ -291,6 +293,8 @@ const en: typeof ru = {
     'Which entries to show: error — errors only … trace — everything, including API response bodies',
   logTipRecording:
     'How detailed the app collects entries at all. Enable trace only while hunting a problem',
+  logTraceWarning:
+    'Trace level: the log and its file hold full Disk answers with the names and paths of your files. Do not send or publish such a file; debug is usually enough for diagnosis.',
   logTipCategory: 'Show or hide this category',
   logTipClear: 'Clear the window (the log file is untouched)',
   logTipCopy: 'Copy the shown entries to the clipboard',

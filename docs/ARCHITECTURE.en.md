@@ -34,7 +34,7 @@ Electron app, three processes of code:
   see below.
 - **`ipc-handlers.ts`** — every `window.api` call; validates paths and arguments ("show in
   folder" only for the sync folder and the app data folder).
-- **`logger.ts`, `log-window.ts`** — ring buffer + rotating file, redaction, the log window.
+- **`logger.ts`, `log-window.ts`** — ring buffer (5000 entries) + file (over 5 MB it moves to `diya.log.1`, at start and while running), redaction, the log window. The recording level is `debug` by default and is not stored in settings; turning on `trace` writes a warning into the log and the window shows a red banner.
 - **Windows and menus:** `window-holder.ts` (re-creates the main window on demand),
   `quit-guard.ts` + `hint-window.ts` (double Cmd/Ctrl+Q), `tray.ts`, `app-menu.ts`,
   `quit-key.ts` (the guarded Cmd/Ctrl+Q inside windows), `app-icon.ts` (window and Dock icon),

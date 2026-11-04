@@ -308,6 +308,28 @@ describe('Toolbar', () => {
     expect(button).toBeDisabled();
   });
 
+  it('every action button of the trash view is an icon with a hidden label and a title (none is bare text that would spill over its neighbours)', async () => {
+    api.getTrashList.mockResolvedValue(list([file('a.txt', { path: '/a.txt' })]));
+    await useBrowserStore.getState().openTrash();
+    const { container } = render(<Toolbar />);
+    const buttons = [...container.querySelectorAll('.toolbar > button')].filter(
+      b => !b.classList.contains('crumb') && !b.classList.contains('btn--icon')
+    );
+    expect(buttons.map(b => b.textContent?.trim())).toEqual([
+      t.restore,
+      t.restoreAs,
+      t.deleteForever,
+      t.emptyTrash,
+    ]);
+    for (const b of buttons) {
+      expect(b.querySelector('svg'), b.textContent ?? '').not.toBeNull();
+      expect(b.querySelector('.btn__label'), b.textContent ?? '').not.toBeNull();
+      expect((b as HTMLElement).title).not.toBe('');
+    }
+    const icons = buttons.map(b => b.querySelector('svg path')?.getAttribute('d'));
+    expect(new Set(icons).size).toBe(icons.length); // no two buttons look the same
+  });
+
   it('trash view swaps the actions', async () => {
     await useBrowserStore.getState().openTrash();
     render(<Toolbar />);

@@ -634,9 +634,29 @@
   flex-direction: column;
   height: 100vh;
 }
+/* Two groups: the filters may wrap onto more rows, the actions stay together in the top right
+   corner, so a button never ends up alone on a row of its own. */
 .logview__bar {
-  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 8px;
+}
+.logview__filters {
+  display: flex;
+  flex: 1 1 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+.logview__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.logview__filters .search__input {
+  min-width: 140px;
 }
 .logview__label {
   display: inline-flex;
@@ -662,6 +682,13 @@
 }
 .chip--toggle input {
   display: none;
+}
+.logview__warn {
+  padding: 6px 12px;
+  background: var(--ui-danger-bg);
+  color: var(--ui-danger);
+  border-bottom: 1px solid var(--ui-danger);
+  font-weight: 600;
 }
 .logview__list {
   flex: 1;

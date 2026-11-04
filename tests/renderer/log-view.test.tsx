@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LOG_CATEGORIES, type LogEntry } from '../../src/shared/log';
@@ -45,6 +45,20 @@ describe('filterEntries', () => {
 });
 
 describe('LogView', () => {
+  it('keeps the actions together in one group, apart from the wrapping filters', () => {
+    const { container } = render(<LogView />);
+    const actions = container.querySelector('.logview__actions') as HTMLElement;
+    const filters = container.querySelector('.logview__filters') as HTMLElement;
+    expect(
+      within(actions)
+        .getAllByRole('button')
+        .map(b => b.textContent)
+    ).toEqual([t.logCopy, t.logOpenFile, t.logClear]);
+    expect(within(actions).getByLabelText(t.logAutoscroll)).toBeInTheDocument();
+    expect(within(filters).getByPlaceholderText(t.logSearch)).toBeInTheDocument();
+    expect(within(filters).queryByText(t.logClear)).toBeNull();
+  });
+
   let push: (x: LogEntry) => void;
   beforeEach(() => {
     window.api = {
@@ -70,6 +84,33 @@ describe('LogView', () => {
     expect(screen.getByText('GET /v1/disk → 200')).toBeInTheDocument();
     act(() => push(e(5, 'error', 'api', 'live failure')));
     expect(screen.getByText('live failure')).toBeInTheDocument();
+  });
+
+  it('warns in red while the recording level is trace, and when trace entries are in the log', async () => {
+    window.api.logGet = vi
+      .fn()
+      .mockResolvedValue({ entries: [sample[1]!], recordLevel: 'debug', file: '/x/log' });
+    render(<LogView />);
+    await screen.findByText('run started');
+    expect(screen.queryByRole('alert')).toBeNull();
+    fireEvent.change(screen.getByTitle(t.logTipRecording).querySelector('select')!, {
+      target: { value: 'trace' },
+    });
+    expect(screen.getByRole('alert').textContent).toBe(t.logTraceWarning);
+    fireEvent.change(screen.getByTitle(t.logTipRecording).querySelector('select')!, {
+      target: { value: 'debug' },
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+    act(() => push(e(9, 'trace', 'api', 'response', { body: {} })));
+    expect(screen.getByRole('alert')).toBeInTheDocument(); // what is already in the file stays there
+  });
+
+  it('warns at once when the window opens with trace already being recorded', async () => {
+    window.api.logGet = vi
+      .fn()
+      .mockResolvedValue({ entries: [], recordLevel: 'trace', file: '/x/log' });
+    render(<LogView />);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
 
   it('hides a category, changes the recording level and clears', async () => {

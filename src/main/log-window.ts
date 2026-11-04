@@ -41,6 +41,13 @@ export function registerLogIpc(): void {
       if (!LOG_LEVELS.includes(level)) throw new Error(`Unknown log level: ${String(level)}`);
       logger.setRecordLevel(level);
       logger.info('app', `recording level set to ${level}`);
+      if (level === 'trace') {
+        // The warning is part of the log: a file that is passed on carries it.
+        logger.warn(
+          'app',
+          'trace recording is on: the log now holds full Disk answers with the names and paths of your files — do not share or publish this file'
+        );
+      }
     })
   );
   ipcMain.handle(

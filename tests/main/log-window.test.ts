@@ -77,6 +77,17 @@ describe('log window IPC', () => {
     expect(() => call(CH.LOG_SET_LEVEL, 'loud')).toThrow('Unknown log level');
   });
 
+  it('turning trace on leaves a warning in the log itself, so a shared file carries it', () => {
+    logger.setRecordLevel('debug');
+    call(CH.LOG_SET_LEVEL, 'trace');
+    const warn = logger.getEntries().find(e => e.level === 'warn' && /trace/.test(e.msg));
+    expect(warn?.msg).toMatch(/do not share/i);
+    call(CH.LOG_SET_LEVEL, 'debug');
+    expect(logger.getEntries().filter(e => e.level === 'warn' && /trace/.test(e.msg))).toHaveLength(
+      1
+    );
+  });
+
   it('reveal opens the file manager only when a file exists', () => {
     call(CH.LOG_REVEAL);
     const file = logger.getFilePath();

@@ -4,7 +4,7 @@ import { join } from 'path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { logger, redactUrl, sanitize } from '../../src/main/logger.js';
+import { logTuning, logger, redactUrl, sanitize } from '../../src/main/logger.js';
 import { visibleAt } from '../../src/shared/log.js';
 
 describe('redaction', () => {
@@ -130,6 +130,47 @@ describe('logger', () => {
     });
     expect(sanitize(Array.from({ length: 80 }, (_, i) => i))).toHaveLength(50);
     expect(sanitize(undefined)).toBeUndefined();
+  });
+
+  describe('rotation while the app runs', () => {
+    it('moves the file aside when it grows past the limit and goes on writing to a new one', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'logrun-'));
+      const before = logTuning.maxFileBytes;
+      logTuning.maxFileBytes = 2000;
+      try {
+        const file = logger.attachFile(dir);
+        for (let i = 0; i < 40; i++) {
+          logger.info('app', `entry ${i} ${'x'.repeat(100)}`);
+          await new Promise(r => setTimeout(r, 5)); // lets the file be created, as in real use
+        }
+        logger.close();
+        await new Promise(r => setTimeout(r, 100));
+        expect(statSync(`${file}.1`).size).toBeGreaterThan(1000);
+        const now = readFileSync(file, 'utf8').trim().split('\n');
+        expect(now.length).toBeGreaterThan(0);
+        expect(statSync(file).size).toBeLessThan(4000); // never far past the limit
+        expect(JSON.parse(now.at(-1)!).msg).toContain('entry 39');
+      } finally {
+        logTuning.maxFileBytes = before;
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('a failure to rotate never breaks logging', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'logrun-'));
+      const before = logTuning.maxFileBytes;
+      logTuning.maxFileBytes = 300;
+      try {
+        logger.attachFile(dir);
+        rmSync(dir, { recursive: true, force: true }); // the folder vanishes under the logger
+        expect(() => {
+          for (let i = 0; i < 20; i++) logger.info('app', `entry ${i} ${'y'.repeat(100)}`);
+        }).not.toThrow();
+      } finally {
+        logTuning.maxFileBytes = before;
+        logger.close();
+      }
+    });
   });
 
   describe('file rotation', () => {

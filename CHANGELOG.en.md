@@ -41,6 +41,12 @@ versions: [SemVer](https://semver.org/).
   (to the Disk trash or the system trash) once nothing unsynced is left inside; if something is,
   the folder is made again on the side that lost it and nothing is lost. A folder with hidden
   files of yours is kept. Changes made in the file manager are seen by the next sync run.
+- The "Empty trash" button no longer spills over its neighbours: it is an icon with a label in the tooltip like the other toolbar buttons, and "Restore as…" has its own icon.
+- Log window: the toolbar no longer pushes "Clear" onto a row of its own (filters wrap, the
+  actions stay together); a red banner warns while `trace` is being recorded or the log holds
+  `trace` entries (they carry file names and paths), and turning `trace` on writes a warning into
+  the log itself. The log file is moved to `diya.log.1` at 5 MB also while the app runs, not
+  only at start.
 - Free space is checked before an upload of 64 MB or more: a file that cannot fit fails at once
   with the numbers instead of after a long transfer.
 

@@ -144,7 +144,7 @@ export function Toolbar(): ReactElement {
             disabled={selected.length !== 1}
             onClick={() => selected[0] && void restoreEntryAs(selected[0])}
           >
-            <Icon name="restore" /> <span className="btn__label">{t.restoreAs}</span>
+            <Icon name="edit" /> <span className="btn__label">{t.restoreAs}</span>
           </button>
           <button
             className="btn btn--danger"
@@ -162,7 +162,7 @@ export function Toolbar(): ReactElement {
             disabled={entries.length === 0}
             onClick={() => void emptyTrash()}
           >
-            {t.emptyTrash}
+            <Icon name="trash-x" /> <span className="btn__label">{t.emptyTrash}</span>
           </button>
         </>
       ) : (

@@ -1,6 +1,7 @@
 /**
  * Application log: an in-memory ring buffer (what the log window shows), an
- * optional rotating file, and live subscribers. Everything is redacted first:
+ * optional file (moved aside to `diya.log.1` at 5 MB, at start and while running), and live
+ * subscribers. Everything is redacted first:
  * tokens and signed URLs never reach the buffer, the file or the window.
  *
  * @module logger
@@ -12,7 +13,8 @@ import { LEVEL_ORDER, type LogCategory, type LogEntry, type LogLevel } from '../
 
 const MAX_ENTRIES = 5000;
 const MAX_DATA_CHARS = 4000;
-const MAX_FILE_BYTES = 5 * 1024 * 1024;
+/** Size limit of the log file; exported so that tests can shrink it. */
+export const logTuning = { maxFileBytes: 5 * 1024 * 1024 };
 const SECRET_KEY = /token|authorization|password|secret|cookie|signature/i;
 
 /** Hide the query string of any non-API URL (upload/download links carry signed tokens). */
@@ -61,6 +63,8 @@ class Logger {
   private listeners = new Set<(e: LogEntry) => void>();
   private stream: WriteStream | null = null;
   private filePath: string | null = null;
+  /** Bytes in the current file, so that it can be moved aside while the app runs. */
+  private fileBytes = 0;
   /** Entries more verbose than this are dropped. `trace` is expensive, so it is opt-in. */
   private recordLevel: LogLevel = 'debug';
 
@@ -77,7 +81,7 @@ class Logger {
     this.entries.push(entry);
     if (this.entries.length > MAX_ENTRIES)
       this.entries.splice(0, this.entries.length - MAX_ENTRIES);
-    this.stream?.write(`${JSON.stringify(entry)}\n`);
+    this.writeLine(`${JSON.stringify(entry)}\n`);
     for (const l of this.listeners) l(entry);
   }
 
@@ -119,20 +123,50 @@ class Logger {
     return () => this.listeners.delete(cb);
   }
 
-  /** Also write entries (JSON lines) to `<dir>/diya.log`, rotating at 5 MB. */
-  attachFile(dir: string): string {
-    mkdirSync(dir, { recursive: true });
-    const file = path.join(dir, 'diya.log');
+  private writeLine(line: string): void {
+    if (!this.stream) return;
+    this.stream.write(line);
+    this.fileBytes += Buffer.byteLength(line);
+    if (this.fileBytes > logTuning.maxFileBytes) this.rotate();
+  }
+
+  /** Keep one older generation (`diya.log.1`); never let a failure here break the app. */
+  private rotate(): void {
+    const file = this.filePath;
+    if (!file) return;
     try {
-      if (statSync(file).size > MAX_FILE_BYTES) renameSync(file, `${file}.1`);
+      this.stream?.end();
+      renameSync(file, `${file}.1`);
     } catch {
-      // no previous file
+      // the file stays where it is and keeps growing; logging goes on
     }
-    this.stream?.end();
+    this.fileBytes = 0;
+    this.openStream(file);
+  }
+
+  private openStream(file: string): void {
     this.stream = createWriteStream(file, { flags: 'a' });
     this.stream.on('error', () => {
       this.stream = null; // never let logging break the app
     });
+  }
+
+  /** Also write entries (JSON lines) to `<dir>/diya.log`; a file over 5 MB is moved aside. */
+  attachFile(dir: string): string {
+    mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'diya.log');
+    try {
+      if (statSync(file).size > logTuning.maxFileBytes) renameSync(file, `${file}.1`);
+    } catch {
+      // no previous file
+    }
+    this.stream?.end();
+    this.openStream(file);
+    try {
+      this.fileBytes = statSync(file).size;
+    } catch {
+      this.fileBytes = 0;
+    }
     this.filePath = file;
     return file;
   }

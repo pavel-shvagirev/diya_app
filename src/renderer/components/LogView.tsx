@@ -70,6 +70,9 @@ export function LogView(): JSX.Element {
     if (follow && listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [shown, follow]);
 
+  // The file gets whatever is recorded: trace holds full Disk answers (names and paths of files).
+  const sensitive = recordLevel === 'trace' || entries.some(x => x.level === 'trace');
+
   const toggleCat = (c: LogCategory): void =>
     setCats(prev => {
       const next = new Set(prev);
@@ -80,85 +83,93 @@ export function LogView(): JSX.Element {
   return (
     <div className="logview">
       <div className="toolbar logview__bar">
-        <span className="logview__label">{t.logFilterCats}</span>
-        {LOG_CATEGORIES.map(c => (
-          <label
-            key={c}
-            className={`chip chip--toggle${cats.has(c) ? ' is-on' : ''}`}
-            title={t.logTipCategory}
-          >
-            <input type="checkbox" checked={cats.has(c)} onChange={() => toggleCat(c)} />
-            {t.logCat[c]}
+        <div className="logview__filters">
+          <span className="logview__label">{t.logFilterCats}</span>
+          {LOG_CATEGORIES.map(c => (
+            <label
+              key={c}
+              className={`chip chip--toggle${cats.has(c) ? ' is-on' : ''}`}
+              title={t.logTipCategory}
+            >
+              <input type="checkbox" checked={cats.has(c)} onChange={() => toggleCat(c)} />
+              {t.logCat[c]}
+            </label>
+          ))}
+          <span className="toolbar__sep" />
+          <label className="logview__label" title={t.logTipVerbosity}>
+            {t.logVerbosity}
+            <select value={verbosity} onChange={e => setVerbosity(e.target.value as LogLevel)}>
+              {LOG_LEVELS.map(l => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
           </label>
-        ))}
-        <span className="toolbar__sep" />
-        <label className="logview__label" title={t.logTipVerbosity}>
-          {t.logVerbosity}
-          <select value={verbosity} onChange={e => setVerbosity(e.target.value as LogLevel)}>
-            {LOG_LEVELS.map(l => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="logview__label" title={t.logTipRecording}>
-          {t.logRecording}
-          <select
-            value={recordLevel}
-            onChange={e => {
-              const level = e.target.value as LogLevel;
-              setRecordLevel(level);
-              void window.api.logSetRecordLevel(level);
+          <label className="logview__label" title={t.logTipRecording}>
+            {t.logRecording}
+            <select
+              value={recordLevel}
+              onChange={e => {
+                const level = e.target.value as LogLevel;
+                setRecordLevel(level);
+                void window.api.logSetRecordLevel(level);
+              }}
+            >
+              {LOG_LEVELS.map(l => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </label>
+          <input
+            className="search__input"
+            placeholder={t.logSearch}
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+          />
+        </div>
+        <div className="logview__actions">
+          <label className="logview__label" title={t.logTipAutoscroll}>
+            <input type="checkbox" checked={follow} onChange={e => setFollow(e.target.checked)} />
+            {t.logAutoscroll}
+          </label>
+          <button
+            className="btn btn--outline"
+            title={t.logTipCopy}
+            onClick={() => {
+              void navigator.clipboard.writeText(shown.map(formatEntry).join('\n')).then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              });
             }}
           >
-            {LOG_LEVELS.map(l => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
-        </label>
-        <input
-          className="search__input"
-          placeholder={t.logSearch}
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-        />
-        <span className="toolbar__spacer" />
-        <label className="logview__label" title={t.logTipAutoscroll}>
-          <input type="checkbox" checked={follow} onChange={e => setFollow(e.target.checked)} />
-          {t.logAutoscroll}
-        </label>
-        <button
-          className="btn btn--outline"
-          title={t.logTipCopy}
-          onClick={() => {
-            void navigator.clipboard.writeText(shown.map(formatEntry).join('\n')).then(() => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            });
-          }}
-        >
-          {copied ? t.logCopied : t.logCopy}
-        </button>
-        <button
-          className="btn btn--outline"
-          title={t.logTipOpenFile}
-          onClick={() => void window.api.logReveal()}
-        >
-          {t.logOpenFile}
-        </button>
-        <button
-          className="btn btn--outline"
-          title={t.logTipClear}
-          onClick={() => {
-            void window.api.logClear().then(() => setEntries([]));
-          }}
-        >
-          {t.logClear}
-        </button>
+            {copied ? t.logCopied : t.logCopy}
+          </button>
+          <button
+            className="btn btn--outline"
+            title={t.logTipOpenFile}
+            onClick={() => void window.api.logReveal()}
+          >
+            {t.logOpenFile}
+          </button>
+          <button
+            className="btn btn--outline"
+            title={t.logTipClear}
+            onClick={() => {
+              void window.api.logClear().then(() => setEntries([]));
+            }}
+          >
+            {t.logClear}
+          </button>
+        </div>
       </div>
+      {sensitive && (
+        <div className="logview__warn" role="alert">
+          {t.logTraceWarning}
+        </div>
+      )}
       <div className="logview__list" ref={listRef}>
         {shown.length === 0 ? (
           <div className="logview__empty">{t.logEmpty}</div>
