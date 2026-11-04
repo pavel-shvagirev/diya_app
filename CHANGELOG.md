@@ -27,7 +27,8 @@
   что-либо.
 - Контрактные тесты на официальных примерах ответов API (`tests/contract`); сквозной прогон
   против Диска в памяти (`npm run e2e`); `AGENTS.md`; шаблоны issue и pull request.
-- Сборки для macOS (dmg, zip), Windows (установщик, portable) и Linux (AppImage, deb, rpm) через
+- Сборки для macOS (dmg, zip), Windows x64/arm64 (установщик, portable) и Linux x64/arm64
+  (AppImage, deb, rpm) через
   GitHub Actions; CI с линтером, типами, тестами с покрытием, CodeQL, аудитом зависимостей.
 - README: инструкция по автозапуску для macOS, Windows и Linux.
 

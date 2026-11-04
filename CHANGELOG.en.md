@@ -24,7 +24,8 @@ versions: [SemVer](https://semver.org/).
   they replace anything.
 - Contract tests against the official API response examples (`tests/contract`); end-to-end run
   against an in-memory Disk (`npm run e2e`); `AGENTS.md`; issue and pull-request templates.
-- Packaging for macOS (dmg, zip), Windows (installer, portable) and Linux (AppImage, deb, rpm)
+- Packaging for macOS (dmg, zip), Windows x64/arm64 (installer, portable) and Linux x64/arm64
+  (AppImage, deb, rpm)
   through GitHub Actions; CI with lint, typecheck, tests with coverage, CodeQL, dependency audit.
 - README: launch-at-login instructions for macOS, Windows and Linux.
 

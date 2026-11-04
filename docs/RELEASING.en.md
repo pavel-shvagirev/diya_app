@@ -8,8 +8,10 @@ registers their own application, see [SIGN_IN.en.md](SIGN_IN.en.md).
 1. Update `version` in `package.json`, and `CHANGELOG.en.md` / `CHANGELOG.md`.
 2. `npm run check` must pass.
 3. Tag and push: `git tag v0.2.0 && git push origin v0.2.0`.
-4. The **Release** workflow builds on Linux (AppImage, deb, rpm), macOS (dmg and zip, Apple Silicon only) and
-   Windows (installer and portable) and attaches everything to a **draft** release. Review the
+4. The **Release** workflow builds on Linux x64 and arm64 (AppImage, deb, rpm; built on Ubuntu 26.04, so they target Ubuntu 26.04+ and
+   other distributions with a glibc that new), macOS (dmg and zip, Apple
+   Silicon only) and Windows x64 and arm64 (installer and portable), each on a runner of its own
+   architecture, and attaches everything to a **draft** release. Review the
    artifacts, then publish the draft.
 
 Local build for your OS: `npm run dist` (files appear in `release/`). The rpm target needs the

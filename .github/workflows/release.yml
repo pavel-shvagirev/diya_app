@@ -1,8 +1,8 @@
 name: Release
 
 # Push a tag like v0.2.0 (the version in package.json must match) to build installers for
-# macOS (dmg, zip), Windows (nsis, portable) and Linux (AppImage, deb, rpm) and attach them to a
-# draft GitHub release. See docs/RELEASING.en.md.
+# macOS arm64 (dmg, zip), Windows x64 and arm64 (nsis, portable) and Linux x64 and arm64
+# (AppImage, deb, rpm) and attach them to a draft GitHub release. See docs/RELEASING.en.md.
 on:
   push:
     tags: ['v*']
@@ -13,18 +13,17 @@ permissions:
 
 jobs:
   build:
-    name: Build (${{ matrix.os }})
+    name: Build (${{ matrix.os }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
-            script: dist:linux
-          - os: macos-latest
-            script: dist:mac
-          - os: windows-latest
-            script: dist:win
+          - { os: ubuntu-26.04, arch: x64, script: dist:linux }
+          - { os: ubuntu-26.04-arm, arch: arm64, script: dist:linux }
+          - { os: macos-latest, arch: arm64, script: dist:mac }
+          - { os: windows-latest, arch: x64, script: dist:win }
+          - { os: windows-11-arm, arch: arm64, script: dist:win }
     env:
       # No certificate is used: do not look for a signing identity.
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -45,10 +44,13 @@ jobs:
         shell: bash
         run: test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
       - run: npm run build
-      - run: npm run ${{ matrix.script }}
+      # The architecture comes from the matrix: each one is built on a runner of its own kind,
+      # so the native module (better-sqlite3) is built, not cross-compiled.
+      - run: npm run ${{ matrix.script }} -- --${{ matrix.arch }}
+        shell: bash
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: installers-${{ matrix.os }}
+          name: installers-${{ matrix.os }}-${{ matrix.arch }}
           if-no-files-found: error
           path: |
             release/*.dmg

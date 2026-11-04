@@ -119,18 +119,8 @@
     },
     "win": {
       "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        }
+        "nsis",
+        "portable"
       ],
       "icon": "build/icon.png"
     },
@@ -144,24 +134,9 @@
     },
     "linux": {
       "target": [
-        {
-          "target": "AppImage",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "deb",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "rpm",
-          "arch": [
-            "x64"
-          ]
-        }
+        "AppImage",
+        "deb",
+        "rpm"
       ],
       "icon": "build/icon.png",
       "category": "Network;FileTransfer",
