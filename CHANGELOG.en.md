@@ -16,7 +16,8 @@ First public release.
 - Sign-in with your own Yandex application (device flow, or a pasted token); the secret and the
   session are stored encrypted. Guide: `docs/SIGN_IN.en.md`.
 - Two-way folder sync with conflict copies, deletion safeguards and a persistent state. Folders
-  follow deletions like files do; the Disk is read as one flat list of files, and a file is
+  follow deletions like files do (an empty one is checked by its own request, so it goes within
+  a minute); the Disk is read as one flat list of files, and a file is
   deleted locally only after the Disk confirms it is gone.
 - Free space is checked before an upload of 64 MB or more.
 - Log window (`Ctrl/Cmd+Shift+L`) with a red warning while `trace` is recorded; `diya.log` is

@@ -929,6 +929,73 @@ describe('SyncEngine', () => {
       expect(e.getProgress().failures).toEqual([]);
     });
 
+    describe('empty folders, which the flat list cannot show', () => {
+      it('an empty folder deleted locally is deleted on the Disk by the very next flat run', async () => {
+        remote.dirs.add('/empty');
+        const e = makeRoot();
+        await e.syncNow();
+        resetCalls();
+        rmSync(inRoot('empty'), { recursive: true });
+        await e.syncNow();
+        expect(remote.dirs.has('/empty')).toBe(false);
+        expect(remote.listCalls).toEqual([]); // no walk of the tree
+        expect(e.getProgress()).toMatchObject({ error: null, failures: [] });
+      });
+
+      it('an empty folder deleted on the Disk is deleted locally by the very next flat run', async () => {
+        remote.dirs.add('/empty');
+        const e = makeRoot();
+        await e.syncNow();
+        resetCalls();
+        remote.dirs.delete('/empty');
+        await e.syncNow();
+        expect(existsSync(inRoot('empty'))).toBe(false);
+        expect(remote.listCalls).toEqual([]);
+        expect(remote.mkdirCalls).toEqual([]);
+      });
+
+      it('one that is still there on both sides is left alone, whatever the check says', async () => {
+        remote.dirs.add('/empty');
+        const e = makeRoot();
+        await e.syncNow();
+        await e.syncNow();
+        expect(existsSync(inRoot('empty'))).toBe(true);
+        remote.stat = async () => {
+          throw new Error('503: down');
+        };
+        rmSync(inRoot('empty'), { recursive: true });
+        await e.syncNow();
+        expect(remote.dirs.has('/empty')).toBe(true); // not an answer: nothing deleted
+        expect(existsSync(inRoot('empty'))).toBe(false); // and not made again either
+        expect(e.getProgress().failures).toEqual([]);
+      });
+
+      it('a local folder that holds a file is not deleted because the Disk copy is gone', async () => {
+        remote.dirs.add('/empty');
+        const e = makeRoot();
+        await e.syncNow();
+        remote.dirs.delete('/empty');
+        writeFileSync(inRoot('empty/mine.txt'), 'm');
+        await e.syncNow();
+        expect(readFileSync(inRoot('empty/mine.txt'), 'utf8')).toBe('m');
+        expect(remote.files.get('/empty/mine.txt')?.data.toString()).toBe('m');
+      });
+
+      it('at most 25 empty folders are checked per run; the rest wait for the full scan', async () => {
+        for (let i = 0; i < 30; i++) remote.dirs.add(`/e${i}`);
+        const e = makeRoot();
+        await e.syncNow();
+        let stats = 0;
+        const real = remote.stat.bind(remote);
+        remote.stat = async (p: string, sig?: AbortSignal) => {
+          stats++;
+          return real(p, sig);
+        };
+        await e.syncNow();
+        expect(stats).toBe(25);
+      });
+    });
+
     it('a file missing from the flat list is deleted locally only after the Disk confirms it is gone', async () => {
       remote.put('/a/x.txt', 'x');
       remote.put('/a/y.txt', 'y');
@@ -1038,17 +1105,17 @@ describe('SyncEngine', () => {
       expect(remote.mkdirCalls).toEqual([]);
     });
 
-    it('a folder known only from the cache is neither created nor deleted by a flat run', async () => {
+    it('a folder known only from the cache is never created again by a flat run', async () => {
       remote.dirs.add('/cached');
       const e = makeRoot();
       await e.syncNow();
-      rmSync(inRoot('cached'), { recursive: true }); // deleted locally, still on the Disk
+      rmSync(inRoot('cached'), { recursive: true });
+      remote.dirs.delete('/cached'); // gone on both sides
       resetCalls();
       await e.syncNow();
+      await e.syncNow();
       expect(existsSync(inRoot('cached'))).toBe(false);
-      expect(remote.removed).not.toContain('/cached'); // decided by the next full scan
-      await e.syncNow({ immediate: true }); // a full scan: now the deletion is carried over
-      expect(remote.dirs.has('/cached')).toBe(false);
+      expect(remote.mkdirCalls).toEqual([]);
     });
 
     it('invalidateRemote makes the next run read the whole tree', async () => {

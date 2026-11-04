@@ -149,6 +149,8 @@ const DEFAULT_RETRY_BASE_MS = 60_000;
 const DEFAULT_RETRY_MAX_MS = 30 * 60_000;
 const DEFAULT_FULL_SCAN_MS = 30 * 60_000;
 const MIN_GUARDED_DELETES = 10;
+/** Empty folders asked for by themselves in one flat run. */
+const MAX_DIR_CHECKS = 25;
 
 /** Files the OS puts into folders by itself: a folder holding only these counts as empty. */
 const FOLDER_JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
@@ -441,7 +443,7 @@ export class SyncEngine {
         'sync',
         `scan: ${local.size} local, ${remote.size} remote (${flat ? 'flat list' : 'folder walk'}), ${state.size} known`
       );
-      ops = await this.plan(pair, local, remote, state);
+      ops = await this.plan(pair, local, remote, state, signal);
       this.guardDeletes(ops, state, rootExisted);
     } catch (err) {
       if (signal.aborted) return this.endCancelled();
@@ -713,8 +715,24 @@ export class SyncEngine {
     pair: SyncPairPaths,
     local: Map<string, LocalEntry>,
     remote: Map<string, RemoteEntry>,
-    state: ReturnType<SyncDB['getSyncStates']>
+    state: ReturnType<SyncDB['getSyncStates']>,
+    signal?: AbortSignal
   ): Promise<Op[]> {
+    let dirChecks = 0;
+    /**
+     * Empty folders are invisible in the flat list, so one known only from an earlier scan is
+     * asked for by itself: a 404 says it is gone from the Disk. At most `MAX_DIR_CHECKS` per
+     * run; any other answer, or none, leaves it alone until the next full scan.
+     */
+    const goneFromDisk = async (rel: string): Promise<boolean | undefined> => {
+      if (dirChecks >= MAX_DIR_CHECKS) return undefined;
+      dirChecks++;
+      try {
+        return !(await this.existsOnDisk(pair, rel, signal ?? new AbortController().signal));
+      } catch {
+        return undefined;
+      }
+    };
     const dirsUp: Op[] = [];
     const dirsDown: Op[] = [];
     const files: Op[] = [];
@@ -757,15 +775,23 @@ export class SyncEngine {
         const known = s?.isDir === true;
         if (l?.isDir && r?.isDir) {
           if (!known) this.recordDir(pair, rel);
+          else if (this.assumedDirs.has(rel) && (await goneFromDisk(rel)) === true)
+            goneOnDisk.push(rel);
         } else if (l?.isDir && !r) {
           if (!known) decide(dirsUp, { kind: 'mkdirRemote', rel }, 'folder exists only locally');
           else if (this.flatRun)
             note(rel, 'folder not in the flat list: left to the next full scan');
           else goneOnDisk.push(rel);
         } else if (r?.isDir && !l) {
-          if (this.assumedDirs.has(rel))
-            note(rel, 'folder known only from an earlier scan: left alone');
-          else if (!known)
+          if (this.assumedDirs.has(rel)) {
+            // Deleted locally (known) and empty on the Disk as far as the flat list can tell.
+            const gone = known ? await goneFromDisk(rel) : undefined;
+            if (gone === true) {
+              this.db.removeSyncState(pair.id, rel);
+              note(rel, 'folder gone from both sides — forgotten');
+            } else if (gone === false) goneLocally.push(rel);
+            else note(rel, 'folder known only from an earlier scan: left alone');
+          } else if (!known)
             decide(dirsDown, { kind: 'mkdirLocal', rel }, 'folder exists only on the Disk');
           else goneLocally.push(rel);
         }

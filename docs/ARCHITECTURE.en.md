@@ -68,8 +68,10 @@ a run after 30 minutes (`fullScanMs`) and a run after the Disk refused the flat 
 remembered for the session) walk the folders; the others read the flat list: one request per
 1000 files, only the fields the engine uses (`fields`). The flat list has no folders, so they
 come from the paths of the files; empty ones are remembered from the last full scan, but only as a
-guess: a flat run neither creates nor deletes a folder because of it (an empty folder created or
-deleted on the Disk in between is dealt with at the next full scan). Changes made through the file
+guess: a flat run never creates a folder because of it. Each such folder is asked for by itself
+(`stat`, at most 25 per run, one request each): a 404 means it was deleted on the Disk, and a
+folder deleted locally is deleted on the Disk (it holds no file, or the flat list would show it).
+An empty folder created on the Disk in between is seen at the next full scan. Changes made through the file
 manager (delete, copy, move, new folder, upload, restore from the trash) call
 `SyncEngine.invalidateRemote()`, so the next run reads the whole tree. The list is read page by page while the Disk
 changes, so a file can slip through: a file that is only _missing_ from a flat list is deleted
@@ -89,6 +91,35 @@ Safety rules: a file changed on both sides keeps both versions; a file whose siz
 compared yet waits for the next run; files modified in the last 2 s are deferred; a run whose
 deletions exceed 50 % of the known files (and at least 10) is refused when the Disk listing looks
 emptied, or when the local folder vanished; local deletions are carried to the Disk trash.
+
+### Why sync is a periodic comparison, not a change journal
+
+Chosen for reliability while the project is young; it is a decision about the current stage,
+not a claim that it is the best design.
+
+- **State is derived, not replayed.** Every run compares three things read afresh: the local
+  tree, the Disk tree and the last agreed state. A missed event, a crash, a network failure, a
+  restart or a changed clock cannot leave the sides permanently different: the next run sees
+  the difference again. An event stream (file-system watcher, Disk change feed) needs a cursor
+  that survives all of these; a lost or stale cursor means silent divergence or data loss.
+- **Each decision is local to one path** and is explained by one log line, so a wrong decision
+  can be reproduced from a log and covered by a test (`tests/main/sync-engine.test.ts`).
+- **The Disk API offers no cheap change feed** for a whole Disk: the nearest things are the
+  list of recently changed files and the flat list. The flat list is the cheapest complete read
+  (1 request per 1000 files) and is what the engine uses; a full folder walk is kept as the
+  reference and runs every 30 minutes.
+- **Deletions are the dangerous part**, and a comparison makes them checkable: a deletion needs
+  the file to be in the last agreed state, gone on one side and unchanged on the other; it is
+  confirmed by an extra request (`stat`) when the list could be incomplete; a run that would
+  delete over half of the known files is refused.
+
+Costs, accepted for now: a change is noticed at the next run, so up to a minute (the 60 s timer;
+local file events shorten it for local changes) plus the length of the run; a folder deleted on
+the Disk that is empty is noticed by its own `stat`, one that held files by the files vanishing
+from the list; a run reads the whole flat list even if little changed. Moving to a change
+feed with a persistent cursor and file-system events is possible later, behind the same plan
+step, once the comparison has been proven on real data; the comparison would stay as the
+periodic check that repairs a lost cursor.
 
 ## Reliability of the API layer
 
