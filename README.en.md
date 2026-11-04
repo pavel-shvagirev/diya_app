@@ -55,6 +55,17 @@ Download the file for your system from the [Releases](../../releases) page.
 | Windows | `…-win-x64.exe` or `…-win-arm64.exe` (installer), `…-portable.exe`   | Not signed: SmartScreen shows "unknown publisher" (More info → Run anyway).                                                                                                         |
 | Linux   | `.AppImage`, `.deb`, `.rpm` (x64 and arm64; built for Ubuntu 26.04+) | AppImage needs `sudo apt install libfuse2t64` on Ubuntu 24.04+: `chmod +x *.AppImage && ./*.AppImage`; `sudo apt install ./*.deb`, `sudo dnf install ./*.rpm`.                      |
 
+### Verify the download
+
+The installers are not code-signed, so check what you downloaded. Each release has `SHA256SUMS.txt`
+and a signed build attestation made by the release workflow.
+
+```sh
+shasum -a 256 -c SHA256SUMS.txt --ignore-missing   # macOS, Linux (sha256sum -c on Linux)
+Get-FileHash .\diya-<version>-win-x64.exe -Algorithm SHA256   # Windows PowerShell: compare by eye
+gh attestation verify <file> --repo pavel-shvagirev/diya_app   # GitHub CLI: built by this repository
+```
+
 ## Sign in
 
 Register your own free application at Yandex once and paste its ID and

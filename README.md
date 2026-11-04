@@ -58,6 +58,17 @@ Windows, macOS и Linux.
 | Windows | `…-win-x64.exe` или `…-win-arm64.exe` (установщик), `…-portable.exe` | Без подписи: SmartScreen показывает «неизвестный издатель» («Подробнее» → «Выполнить в любом случае»).                                                                                                                   |
 | Linux   | `.AppImage`, `.deb`, `.rpm` (x64 и arm64; сборка для Ubuntu 26.04+)  | AppImage на Ubuntu 24.04+ требует `sudo apt install libfuse2t64`: `chmod +x *.AppImage && ./*.AppImage`; `sudo apt install ./*.deb`, `sudo dnf install ./*.rpm`.                                                         |
 
+### Проверка скачанного файла
+
+Установщики не подписаны, поэтому проверяйте скачанное. В каждом релизе есть `SHA256SUMS.txt` и
+подписанное подтверждение сборки, которое создаёт workflow релиза.
+
+```sh
+shasum -a 256 -c SHA256SUMS.txt --ignore-missing   # macOS, Linux (на Linux также sha256sum -c)
+Get-FileHash .\diya-<версия>-win-x64.exe -Algorithm SHA256   # Windows PowerShell: сравните глазами
+gh attestation verify <файл> --repo pavel-shvagirev/diya_app   # GitHub CLI: собрано этим репозиторием
+```
+
 ## Вход
 
 Один раз зарегистрируйте своё бесплатное приложение в Яндексе и вставьте его ID и

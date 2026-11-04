@@ -5,6 +5,10 @@ versions: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Releases carry `SHA256SUMS.txt` and a signed build attestation (`gh attestation verify`).
+
 ## [0.2.1] - 2026-11-04
 
 First public release.

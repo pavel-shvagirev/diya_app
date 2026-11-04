@@ -18,7 +18,8 @@ registers their own application, see [SIGN_IN.en.md](SIGN_IN.en.md).
    Silicon only) and Windows x64 and arm64 (installer and portable), each on a runner of its own
    architecture, and attaches everything to a **draft** release. Review the
    artifacts, then publish the draft.
-6. Before publishing: replace the generated notes with the `[X.Y.Z]` section of the changelog,
+6. The workflow also attaches `SHA256SUMS.txt` and a build attestation (needs the `id-token` and
+   `attestations` permissions of the publish job). Before publishing: replace the generated notes with the `[X.Y.Z]` section of the changelog,
    install at least one bundle and check sign-in, browsing and sync.
 
 Local build for your OS: `npm run dist` (files appear in `release/`). The rpm target needs the
