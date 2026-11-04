@@ -13,8 +13,10 @@ import {
   deleteForever,
   moveEntriesTo,
   openEntry,
+  openTrashEntry,
   removeEntries,
   renameEntry,
+  restoreEntryAs,
   canShare,
   shareEntry,
 } from '../lib/actions.js';
@@ -93,8 +95,8 @@ export function FileTable(): ReactElement {
     else if (e.key === 'End') move(visible.length, e.shiftKey);
     else if (mod && e.key.toLowerCase() === 'a') b().selectAll();
     else if (e.key === 'Escape') b().clearSelection();
-    else if (e.key === 'Enter' && selected[0] && selected.length === 1 && !inTrash)
-      void openEntry(selected[0]);
+    else if (e.key === 'Enter' && selected[0] && selected.length === 1)
+      void (inTrash ? openTrashEntry(selected[0]) : openEntry(selected[0]));
     else if (e.key === 'F2' && selected[0] && selected.length === 1 && !inTrash)
       void renameEntry(selected[0]);
     else if ((e.key === 'Delete' || e.key === 'Backspace') && selected.length > 0) {
@@ -107,12 +109,25 @@ export function FileTable(): ReactElement {
 
   const menuItems = (): MenuItem[] => {
     if (inTrash) {
-      return [
-        {
-          label: t.restore,
+      const only = selected.length === 1 ? selected[0] : undefined;
+      const items: MenuItem[] = [];
+      if (only && isDir(only)) {
+        items.push({ label: t.open, icon: 'folder', onClick: () => void openTrashEntry(only) });
+      }
+      items.push({
+        label: t.restore,
+        icon: 'restore',
+        onClick: () => void b().restoreEntries(selected.map(e => e.path)),
+      });
+      if (only) {
+        items.push({
+          label: t.restoreAs,
           icon: 'restore',
-          onClick: () => void b().restoreEntries(selected.map(e => e.path)),
-        },
+          onClick: () => void restoreEntryAs(only),
+        });
+      }
+      return [
+        ...items,
         'sep',
         {
           label: t.deleteForever,
@@ -303,7 +318,7 @@ export function FileTable(): ReactElement {
                   aria-selected={isSel}
                   draggable={!inTrash}
                   onClick={e => onRowClick(e, entry)}
-                  onDoubleClick={() => !inTrash && void openEntry(entry)}
+                  onDoubleClick={() => void (inTrash ? openTrashEntry(entry) : openEntry(entry))}
                   onContextMenu={e => {
                     e.stopPropagation();
                     onContextMenu(e, entry);

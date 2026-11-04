@@ -8,6 +8,10 @@
  * "deleted on the other", and "changed on one side" from "changed on both"
  * (a conflict, which keeps both versions).
  *
+ * Reading the Disk is the expensive part (one request per folder). When the whole Disk is
+ * synced, most runs read the flat list of all files instead (a request per thousand files) and
+ * the folder tree only now and then; see `scanRemote`.
+ *
  * @module sync-engine
  */
 import { createHash } from 'crypto';
@@ -35,14 +39,20 @@ export interface RemoteEntry {
 
 /** What the engine needs from the remote side. Implemented over the Yandex.Disk client. */
 export interface RemoteStorage {
-  list(remoteDir: string): Promise<RemoteEntry[]>;
-  stat(remotePath: string): Promise<RemoteEntry>;
-  mkdir(remotePath: string): Promise<void>;
+  list(remoteDir: string, signal?: AbortSignal): Promise<RemoteEntry[]>;
+  /**
+   * Every file on the whole Disk, in a few large pages (no folders). Optional: without it the
+   * engine always walks the folders.
+   */
+  listAllFiles?(signal?: AbortSignal): Promise<RemoteEntry[]>;
+  stat(remotePath: string, signal?: AbortSignal): Promise<RemoteEntry>;
+  mkdir(remotePath: string, signal?: AbortSignal): Promise<void>;
   upload(
     localPath: string,
     remotePath: string,
     overwrite: boolean,
-    onProgress: (done: number, total: number) => void
+    onProgress: (done: number, total: number) => void,
+    signal?: AbortSignal
   ): Promise<void>;
   download(
     remotePath: string,
@@ -50,10 +60,11 @@ export interface RemoteStorage {
     onProgress: (done: number, total: number) => void,
     mtime: Date,
     /** Size and md5 from the Disk's listing: the download is verified against them. */
-    expected?: { size?: number; md5?: string }
+    expected?: { size?: number; md5?: string },
+    signal?: AbortSignal
   ): Promise<void>;
   /** Move to the remote trash. */
-  remove(remotePath: string): Promise<void>;
+  remove(remotePath: string, signal?: AbortSignal): Promise<void>;
 }
 
 export interface SyncPairPaths {
@@ -96,6 +107,8 @@ export interface SyncEngineOptions {
   retryBaseMs?: number;
   /** Longest delay of that kind. Default 30 minutes. */
   retryMaxMs?: number;
+  /** How long the folder tree may go unread while the flat file list is used. Default 30 minutes. */
+  fullScanMs?: number;
   /** Watch the local folder and sync shortly after changes. Default true. */
   watch?: boolean;
   /** How local deletions are performed (default: permanent `rm`). */
@@ -134,6 +147,7 @@ const MAX_DELETE_RATIO = 0.5;
 const DEFAULT_MIN_GAP_MS = 5000;
 const DEFAULT_RETRY_BASE_MS = 60_000;
 const DEFAULT_RETRY_MAX_MS = 30 * 60_000;
+const DEFAULT_FULL_SCAN_MS = 30 * 60_000;
 const MIN_GUARDED_DELETES = 10;
 
 /** Files the engine never syncs: dotfiles, partial downloads, OS noise. */
@@ -174,9 +188,6 @@ function emptyProgress(lastSync: string | null = null): SyncProgress {
   };
 }
 
-/** Thrown inside a run when the user paused sync; ends the run quietly. */
-class RunCancelled extends Error {}
-
 export class SyncEngine {
   private pair: SyncPairPaths | null = null;
   private progress: SyncProgress = emptyProgress();
@@ -189,8 +200,18 @@ export class SyncEngine {
   private deferred = false;
   private deferTimer: NodeJS.Timeout | null = null;
   private enabled = false;
-  /** Bumped by every pause: a run that began under an older value stops at the next step. */
-  private stopGen = 0;
+  /** Cancels the requests and transfers of the run in flight (pause, quit). */
+  private runCtrl: AbortController | null = null;
+  /** Pause pressed while a run waited out the gap: that run does not start. */
+  private cancelWait = false;
+  /** When the folder tree was last read in full (0: not yet); flat-list runs rely on it. */
+  private lastFullScan = 0;
+  /** The next run reads the folder tree (the user pressed "Sync now"). */
+  private fullNext = false;
+  /** The Disk refused the flat list: folders are walked for the rest of the session. */
+  private flatBroken = false;
+  /** Folders as the last full scan or our own mkdir saw them: a flat list shows no empty ones. */
+  private knownDirs = new Map<string, RemoteEntry>();
   /** When the last run ended (ms since epoch): runs keep `minGapMs` apart. */
   private lastFinished = 0;
   /** A manual run is waiting: the next run skips the pause. */
@@ -211,6 +232,7 @@ export class SyncEngine {
       minGapMs: options.minGapMs ?? DEFAULT_MIN_GAP_MS,
       retryBaseMs: options.retryBaseMs ?? DEFAULT_RETRY_BASE_MS,
       retryMaxMs: options.retryMaxMs ?? DEFAULT_RETRY_MAX_MS,
+      fullScanMs: options.fullScanMs ?? DEFAULT_FULL_SCAN_MS,
       watch: options.watch ?? true,
       removeLocal: options.removeLocal ?? (p => rm(p, { recursive: true, force: true })),
       settleMs: options.settleMs ?? 2000,
@@ -241,6 +263,10 @@ export class SyncEngine {
     this.stop();
     this.pair = pair;
     this.retries.clear();
+    this.lastFullScan = 0;
+    this.knownDirs.clear();
+    this.fullNext = false;
+    this.flatBroken = false;
     const last = pair ? (this.db.getPair(pair.id)?.lastSync ?? null) : null;
     this.progress = emptyProgress(last);
     this.emit();
@@ -276,10 +302,14 @@ export class SyncEngine {
     void this.syncNow();
   }
 
-  /** Pause: stop the schedule and the watcher; a run in flight finishes its current step and ends. */
+  /** Pause: stop the schedule and the watcher and cancel the run in flight, requests included. */
   stop(): void {
     this.enabled = false;
-    this.stopGen++;
+    this.runCtrl?.abort();
+    if (this.endPause) {
+      this.cancelWait = true;
+      this.endPause();
+    }
     if (this.deferTimer) clearTimeout(this.deferTimer);
     this.deferTimer = null;
     if (this.timer) clearInterval(this.timer);
@@ -314,14 +344,20 @@ export class SyncEngine {
       if (options.immediate) {
         // A click while a run is in progress: that run already reads the current state, so no
         // second full scan is queued behind it (local changes still queue one through the watcher).
-        this.endPause?.();
+        if (this.endPause) {
+          this.fullNext = true;
+          this.endPause();
+        }
         return;
       }
       this.rerun = true;
       logger.debug('sync', 'run requested while one is in progress — will repeat once it ends');
       return;
     }
-    if (options.immediate) this.immediate = true;
+    if (options.immediate) {
+      this.immediate = true;
+      this.fullNext = true; // someone is looking: read the whole tree
+    }
     this.running = true;
     try {
       do {
@@ -337,6 +373,10 @@ export class SyncEngine {
             };
           });
           this.endPause = null;
+          if (this.cancelWait) {
+            this.cancelWait = false;
+            break;
+          }
         }
         const pair = this.pair;
         if (!pair) break;
@@ -352,18 +392,27 @@ export class SyncEngine {
   }
 
   private async runOnce(pair: SyncPairPaths): Promise<void> {
+    const ctrl = new AbortController();
+    this.runCtrl = ctrl;
+    try {
+      await this.runInner(pair, ctrl.signal);
+    } finally {
+      if (this.runCtrl === ctrl) this.runCtrl = null;
+    }
+  }
+
+  private async runInner(pair: SyncPairPaths, signal: AbortSignal): Promise<void> {
     const base = { ...emptyProgress(this.progress.lastSync), phase: 'scanning' as SyncPhase };
     this.progress = base;
     this.deferred = false;
     this.emit();
     const runStarted = Date.now();
-    const gen = this.stopGen;
-    const cancelled = (): boolean => this.stopGen !== gen;
     logger.info('sync', 'run started', { local: pair.localPath, remote: pair.remotePath });
 
     let ops: Op[];
     let local: Map<string, LocalEntry>;
     let remote: Map<string, RemoteEntry>;
+    let flat = false;
     const state = this.db.getSyncStates(pair.id);
     let rootExisted = true;
     try {
@@ -373,12 +422,15 @@ export class SyncEngine {
       );
       await mkdir(pair.localPath, { recursive: true });
       local = await this.scanLocal(pair.localPath);
-      remote = await this.scanRemote(pair.remotePath, cancelled);
-      logger.debug('sync', `scan: ${local.size} local, ${remote.size} remote, ${state.size} known`);
+      ({ entries: remote, flat } = await this.scanRemote(pair.remotePath, signal));
+      logger.debug(
+        'sync',
+        `scan: ${local.size} local, ${remote.size} remote (${flat ? 'flat list' : 'folder walk'}), ${state.size} known`
+      );
       ops = await this.plan(pair, local, remote, state);
       this.guardDeletes(ops, state, rootExisted);
     } catch (err) {
-      if (err instanceof RunCancelled) return this.endCancelled();
+      if (signal.aborted) return this.endCancelled();
       const message = err instanceof Error ? err.message : String(err);
       logger.error('sync', `run aborted: ${message}`);
       this.patch({ phase: 'error', error: message });
@@ -407,7 +459,7 @@ export class SyncEngine {
     };
 
     for (const op of ops) {
-      if (cancelled()) return this.endCancelled();
+      if (signal.aborted) return this.endCancelled();
       const hold = this.retryHold(op.rel);
       if (hold > 0) {
         // The Disk is failing on this file: no request until its delay is over.
@@ -419,22 +471,34 @@ export class SyncEngine {
       const opStarted = Date.now();
       logger.info('sync', `▶ ${op.kind} ${op.rel}${'size' in op ? ` (${op.size} B)` : ''}`);
       try {
-        const bytes = await this.execute(pair, op, local, remote, (done, total) =>
-          this.patch({
-            doneBytes: doneBytes + done,
-            current: {
-              path: op.rel,
-              direction: directionOf(op),
-              done,
-              total,
-            },
-          })
-        );
-        doneBytes += bytes;
-        this.retries.delete(op.rel);
-        if (op.kind === 'conflict') conflicts++;
-        logger.debug('sync', `✓ ${op.kind} ${op.rel} (${Date.now() - opStarted} ms)`);
+        if (flat && op.kind === 'deleteLocal' && (await this.existsOnDisk(pair, op.rel, signal))) {
+          // The flat list is read page by page while the Disk changes: a file can slip through.
+          logger.warn('sync', `${op.rel}: missing from the flat list but still on the Disk — kept`);
+        } else {
+          const bytes = await this.execute(
+            pair,
+            op,
+            local,
+            remote,
+            (done, total) =>
+              this.patch({
+                doneBytes: doneBytes + done,
+                current: {
+                  path: op.rel,
+                  direction: directionOf(op),
+                  done,
+                  total,
+                },
+              }),
+            signal
+          );
+          doneBytes += bytes;
+          this.retries.delete(op.rel);
+          if (op.kind === 'conflict') conflicts++;
+          logger.debug('sync', `✓ ${op.kind} ${op.rel} (${Date.now() - opStarted} ms)`);
+        }
       } catch (err) {
+        if (signal.aborted) return this.endCancelled();
         const message = err instanceof Error ? err.message : String(err);
         failures.push(`${op.rel}: ${message}`);
         logger.error('sync', `✗ ${op.kind} ${op.rel}: ${message}`);
@@ -479,10 +543,14 @@ export class SyncEngine {
     return entry ? Math.max(0, entry.until - Date.now()) : 0;
   }
 
-  /** A server error (5xx, 429) delays the next try for this file, doubling each time; anything else clears it. */
+  /**
+   * A server error (5xx, 429) delays the next try for this file, doubling each time; anything else
+   * clears it. 507 is the Disk saying it is full: that is not trouble on its side, and the user can
+   * free space at any moment, so the next run tries again.
+   */
   private noteFailure(rel: string, err: unknown): void {
     const status = errorStatus(err);
-    if (status === undefined || (status < 500 && status !== 429)) {
+    if (status === undefined || status === 507 || (status < 500 && status !== 429)) {
       this.retries.delete(rel);
       return;
     }
@@ -515,10 +583,67 @@ export class SyncEngine {
     return out;
   }
 
+  /**
+   * Read the Disk side. With the whole Disk synced, a run reads the flat list of all files (one
+   * request per thousand files) and the folder tree only when it is due: the first run, after
+   * `fullScanMs`, when the user presses "Sync now", or when the Disk refuses the flat list.
+   * The flat list shows no empty folders, so those come from the last full scan.
+   */
   private async scanRemote(
     root: string,
-    cancelled: () => boolean
-  ): Promise<Map<string, RemoteEntry>> {
+    signal: AbortSignal
+  ): Promise<{ entries: Map<string, RemoteEntry>; flat: boolean }> {
+    if (this.flatDue(root)) {
+      try {
+        return { entries: await this.scanFlat(signal), flat: true };
+      } catch (err) {
+        // A 400 means the Disk did not like the request itself: do not ask again this session.
+        if (signal.aborted || errorStatus(err) !== 400) throw err;
+        this.flatBroken = true;
+        logger.warn('sync', 'the Disk refused the flat file list; walking the folders instead', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    const entries = await this.scanTree(root, signal);
+    this.lastFullScan = Date.now();
+    this.fullNext = false;
+    this.knownDirs = new Map([...entries].filter(([, e]) => e.isDir));
+    return { entries, flat: false };
+  }
+
+  private flatDue(root: string): boolean {
+    return (
+      root === '/' &&
+      this.remote.listAllFiles !== undefined &&
+      !this.flatBroken &&
+      !this.fullNext &&
+      this.lastFullScan > 0 &&
+      Date.now() - this.lastFullScan < this.opts.fullScanMs
+    );
+  }
+
+  private async scanFlat(signal: AbortSignal): Promise<Map<string, RemoteEntry>> {
+    const files = (await this.remote.listAllFiles?.(signal)) ?? [];
+    const out = new Map(this.knownDirs);
+    for (const e of files) {
+      const rel = e.path.slice(1);
+      const parts = rel.split('/');
+      if (parts.some(isIgnored)) continue;
+      // Folders are implied by the paths of the files inside them.
+      let dir = '';
+      for (const name of parts.slice(0, -1)) {
+        dir = dir ? `${dir}/${name}` : name;
+        if (!out.has(dir)) {
+          out.set(dir, { path: `/${dir}`, name, isDir: true, size: 0, modified: '' });
+        }
+      }
+      out.set(rel, e);
+    }
+    return out;
+  }
+
+  private async scanTree(root: string, signal: AbortSignal): Promise<Map<string, RemoteEntry>> {
     const out = new Map<string, RemoteEntry>();
     const rootPrefix = root === '/' ? '' : root;
     const queue = [root];
@@ -526,22 +651,37 @@ export class SyncEngine {
     // (treating a failed listing as "empty" would delete local files).
     if (root !== '/') {
       try {
-        await this.remote.list(root);
+        await this.remote.list(root, signal);
       } catch (err) {
         if (errorStatus(err) !== 404) throw err;
-        await this.remote.mkdir(root);
+        await this.remote.mkdir(root, signal);
       }
     }
     while (queue.length) {
-      if (cancelled()) throw new RunCancelled();
+      signal.throwIfAborted();
       const dir = queue.shift() as string;
-      for (const e of await this.remote.list(dir)) {
+      for (const e of await this.remote.list(dir, signal)) {
         if (isIgnored(e.name)) continue;
         out.set(e.path.slice(rootPrefix.length + 1), e);
         if (e.isDir) queue.push(e.path);
       }
     }
     return out;
+  }
+
+  /** Does the Disk still hold this path? A 404 says no; any other failure is not an answer. */
+  private async existsOnDisk(
+    pair: SyncPairPaths,
+    rel: string,
+    signal: AbortSignal
+  ): Promise<boolean> {
+    try {
+      await this.remote.stat(this.remoteFull(pair, rel), signal);
+      return true;
+    } catch (err) {
+      if (errorStatus(err) === 404) return false;
+      throw err;
+    }
   }
 
   // ── Planning ─────────────────────────────────────────────────
@@ -777,10 +917,15 @@ export class SyncEngine {
    * The remote side is read back if the Disk already shows the file; if not (large
    * uploads can lag), its timestamp is recorded as unknown and adopted later.
    */
-  private async recordUploaded(pair: SyncPairPaths, rel: string, l: LocalEntry): Promise<void> {
+  private async recordUploaded(
+    pair: SyncPairPaths,
+    rel: string,
+    l: LocalEntry,
+    signal: AbortSignal
+  ): Promise<void> {
     let r: RemoteEntry;
     try {
-      r = await this.remote.stat(this.remoteFull(pair, rel));
+      r = await this.remote.stat(this.remoteFull(pair, rel), signal);
     } catch {
       r = { path: this.remoteFull(pair, rel), name: rel, isDir: false, size: l.size, modified: '' };
     }
@@ -811,7 +956,8 @@ export class SyncEngine {
     op: Op,
     local: Map<string, LocalEntry>,
     remote: Map<string, RemoteEntry>,
-    onProgress: (done: number, total: number) => void
+    onProgress: (done: number, total: number) => void,
+    signal: AbortSignal
   ): Promise<number> {
     const full = this.localFull(pair, op.rel);
     const rfull = this.remoteFull(pair, op.rel);
@@ -821,22 +967,33 @@ export class SyncEngine {
         await mkdir(full, { recursive: true });
         return 0;
       case 'mkdirRemote':
-        await this.remote.mkdir(rfull);
+        await this.remote.mkdir(rfull, signal);
+        this.knownDirs.set(op.rel, {
+          path: rfull,
+          name: path.basename(rfull),
+          isDir: true,
+          size: 0,
+          modified: '',
+        });
         return 0;
       case 'upload': {
         const existed = remote.has(op.rel);
         const l = local.get(op.rel) as LocalEntry;
-        await this.remote.upload(full, rfull, existed, onProgress);
-        await this.recordUploaded(pair, op.rel, l);
+        await this.remote.upload(full, rfull, existed, onProgress, signal);
+        await this.recordUploaded(pair, op.rel, l, signal);
         return op.size;
       }
       case 'download': {
         const r = remote.get(op.rel) as RemoteEntry;
         await mkdir(path.dirname(full), { recursive: true });
-        await this.remote.download(rfull, full, onProgress, new Date(r.modified), {
-          size: r.size,
-          md5: r.md5,
-        });
+        await this.remote.download(
+          rfull,
+          full,
+          onProgress,
+          new Date(r.modified),
+          { size: r.size, md5: r.md5 },
+          signal
+        );
         await this.recordDownloaded(pair, op.rel, r);
         return op.size;
       }
@@ -846,15 +1003,19 @@ export class SyncEngine {
         const r = remote.get(op.rel) as RemoteEntry;
         const copy = this.conflictName(full);
         await rename(full, copy);
-        await this.remote.download(rfull, full, onProgress, new Date(r.modified), {
-          size: r.size,
-          md5: r.md5,
-        });
+        await this.remote.download(
+          rfull,
+          full,
+          onProgress,
+          new Date(r.modified),
+          { size: r.size, md5: r.md5 },
+          signal
+        );
         await this.recordDownloaded(pair, op.rel, r);
         return op.size;
       }
       case 'deleteRemote':
-        await this.remote.remove(rfull);
+        await this.remote.remove(rfull, signal);
         this.db.removeSyncState(pair.id, op.rel);
         return 0;
       case 'deleteLocal':

@@ -38,6 +38,14 @@ class FakeRemote implements RemoteStorage {
   /** Every download() call, and the error (if any) the Disk answers with. */
   downloads = 0;
   downloadError: Error | null = null;
+  /** Folders passed to list(), folders passed to mkdir(), and flat-list requests. */
+  listCalls: string[] = [];
+  mkdirCalls: string[] = [];
+  flatCalls = 0;
+  /** The flat list fails with this. */
+  failFlat: Error | null = null;
+  /** Files that exist but are missing from the flat list (as after a paging race). */
+  hiddenFromFlat = new Set<string>();
 
   private stamp(): string {
     return new Date(Date.UTC(2026, 0, 1, 0, 0, this.clock++)).toISOString();
@@ -62,24 +70,33 @@ class FakeRemote implements RemoteStorage {
       md5: this.hideMd5 ? undefined : createHash('md5').update(f.data).digest('hex'),
     };
   }
-  async list(dir: string): Promise<RemoteEntry[]> {
+  async list(dir: string, _signal?: AbortSignal): Promise<RemoteEntry[]> {
+    this.listCalls.push(dir);
     if (this.failList) throw new Error('503: down');
     if (!this.dirs.has(dir)) throw new Error('404: not found');
     const under = (p: string): boolean => dirname(p) === dir && p !== '/';
     return [...this.dirs, ...this.files.keys()].filter(under).map(p => this.entry(p));
   }
-  async stat(path: string): Promise<RemoteEntry> {
+  async listAllFiles(_signal?: AbortSignal): Promise<RemoteEntry[]> {
+    this.flatCalls++;
+    if (this.failFlat) throw this.failFlat;
+    return [...this.files.keys()].filter(p => !this.hiddenFromFlat.has(p)).map(p => this.entry(p));
+  }
+  async stat(path: string, _signal?: AbortSignal): Promise<RemoteEntry> {
     if (this.statMisses-- > 0) throw new Error('404: not found yet');
+    if (!this.files.has(path) && !this.dirs.has(path)) throw new Error('404: not found');
     return this.entry(path);
   }
-  async mkdir(path: string): Promise<void> {
+  async mkdir(path: string, _signal?: AbortSignal): Promise<void> {
+    this.mkdirCalls.push(path);
     this.mkdirs(path);
   }
   async upload(
     local: string,
     remote: string,
     _o: boolean,
-    onProgress: (d: number, t: number) => void
+    onProgress: (d: number, t: number) => void,
+    _signal?: AbortSignal
   ): Promise<void> {
     const data = readFileSync(local);
     this.put(remote, data.toString());
@@ -90,7 +107,8 @@ class FakeRemote implements RemoteStorage {
     local: string,
     onProgress: (d: number, t: number) => void,
     mtime: Date,
-    expected?: { size?: number; md5?: string }
+    expected?: { size?: number; md5?: string },
+    _signal?: AbortSignal
   ): Promise<void> {
     const f = this.files.get(remote);
     if (!f) throw new Error('404');
@@ -103,7 +121,7 @@ class FakeRemote implements RemoteStorage {
     utimesSync(local, mtime, mtime);
     onProgress(f.data.length, f.data.length);
   }
-  async remove(path: string): Promise<void> {
+  async remove(path: string, _signal?: AbortSignal): Promise<void> {
     this.files.delete(path);
     this.removed.push(path);
   }
@@ -747,6 +765,276 @@ describe('SyncEngine', () => {
       };
       await engine.syncNow();
       expect(engine.getProgress().failures).toEqual([]);
+    });
+  });
+
+  describe('flat file list and the schedule of full scans', () => {
+    let rootDir: string;
+    const makeRoot = (opts: Partial<ConstructorParameters<typeof SyncEngine>[2]> = {}) => {
+      rootDir = join(tmp, 'disk-root');
+      mkdirSync(rootDir, { recursive: true });
+      const id = db.addSyncPair(rootDir, '/');
+      const e = new SyncEngine(remote, db, { watch: false, settleMs: 0, minGapMs: 0, ...opts });
+      e.configure({ id, localPath: rootDir, remotePath: '/' });
+      return e;
+    };
+    const inRoot = (rel: string): string => join(rootDir, rel);
+    const resetCalls = (): void => {
+      remote.listCalls = [];
+      remote.mkdirCalls = [];
+      remote.flatCalls = 0;
+    };
+
+    it('the first run walks the folders, the next ones read the flat list only', async () => {
+      remote.put('/a/x.txt', 'x');
+      remote.put('/b/y.txt', 'y');
+      const e = makeRoot();
+      await e.syncNow();
+      expect(remote.flatCalls).toBe(0);
+      expect(remote.listCalls).toEqual(expect.arrayContaining(['/', '/a', '/b']));
+      resetCalls();
+      await e.syncNow();
+      expect(remote.listCalls).toEqual([]);
+      expect(remote.flatCalls).toBe(1);
+      expect(e.getProgress()).toMatchObject({ error: null, totalFiles: 0 });
+    });
+
+    it('new and changed files on the Disk are found without listing a single folder', async () => {
+      remote.put('/a/x.txt', 'x');
+      const e = makeRoot();
+      await e.syncNow();
+      resetCalls();
+      remote.put('/a/new.txt', 'n');
+      remote.put('/a/x.txt', 'x2');
+      await e.syncNow();
+      expect(readFileSync(inRoot('a/new.txt'), 'utf8')).toBe('n');
+      expect(readFileSync(inRoot('a/x.txt'), 'utf8')).toBe('x2');
+      expect(remote.listCalls).toEqual([]);
+    });
+
+    it('an empty folder seen by the full scan is not asked for again', async () => {
+      remote.dirs.add('/empty');
+      const e = makeRoot();
+      await e.syncNow();
+      expect(existsSync(inRoot('empty'))).toBe(true);
+      resetCalls();
+      await e.syncNow();
+      expect(remote.mkdirCalls).toEqual([]);
+      expect(e.getProgress().failures).toEqual([]);
+    });
+
+    it('an empty local folder is created on the Disk once, not on every run', async () => {
+      const e = makeRoot();
+      mkdirSync(inRoot('fresh'));
+      await e.syncNow();
+      expect(remote.mkdirCalls).toContain('/fresh');
+      resetCalls();
+      await e.syncNow();
+      expect(remote.mkdirCalls).toEqual([]);
+      expect(e.getProgress().failures).toEqual([]);
+    });
+
+    it('a file missing from the flat list is deleted locally only after the Disk confirms it is gone', async () => {
+      remote.put('/a/x.txt', 'x');
+      remote.put('/a/y.txt', 'y');
+      const e = makeRoot();
+      await e.syncNow();
+      remote.hiddenFromFlat.add('/a/x.txt'); // still on the Disk, only missing from the list
+      await e.syncNow();
+      expect(existsSync(inRoot('a/x.txt'))).toBe(true);
+      remote.files.delete('/a/y.txt'); // really gone
+      await e.syncNow();
+      expect(existsSync(inRoot('a/y.txt'))).toBe(false);
+      expect(existsSync(inRoot('a/x.txt'))).toBe(true);
+    });
+
+    it('a failed confirmation keeps the file and reports the failure', async () => {
+      remote.put('/a/x.txt', 'x');
+      const e = makeRoot();
+      await e.syncNow();
+      remote.hiddenFromFlat.add('/a/x.txt');
+      remote.stat = async () => {
+        throw new Error('503: down');
+      };
+      await e.syncNow();
+      expect(existsSync(inRoot('a/x.txt'))).toBe(true);
+      expect(e.getProgress().failures.join()).toContain('503');
+    });
+
+    it('the whole tree is read again after fullScanMs', async () => {
+      remote.put('/a/x.txt', 'x');
+      const e = makeRoot({ fullScanMs: 100 });
+      await e.syncNow();
+      resetCalls();
+      await new Promise(r => setTimeout(r, 150));
+      await e.syncNow();
+      expect(remote.listCalls.length).toBeGreaterThan(0);
+      expect(remote.flatCalls).toBe(0);
+    });
+
+    it('"Sync now" reads the whole tree', async () => {
+      remote.put('/a/x.txt', 'x');
+      const e = makeRoot();
+      await e.syncNow();
+      resetCalls();
+      await e.syncNow({ immediate: true });
+      expect(remote.listCalls.length).toBeGreaterThan(0);
+      expect(remote.flatCalls).toBe(0);
+    });
+
+    it('configuring again starts with a full scan', async () => {
+      remote.put('/a/x.txt', 'x');
+      const e = makeRoot();
+      await e.syncNow();
+      e.configure({ id: db.getPairs().at(-1)!.id, localPath: rootDir, remotePath: '/' });
+      resetCalls();
+      await e.syncNow();
+      expect(remote.listCalls.length).toBeGreaterThan(0);
+    });
+
+    it('goes back to walking the folders when the Disk refuses the flat list (400), and stays there', async () => {
+      remote.put('/a/x.txt', 'x');
+      const e = makeRoot();
+      await e.syncNow();
+      resetCalls();
+      remote.failFlat = new Error('400: limit too large');
+      remote.put('/a/n.txt', 'n');
+      await e.syncNow();
+      expect(remote.flatCalls).toBe(1);
+      expect(remote.listCalls.length).toBeGreaterThan(0);
+      expect(readFileSync(inRoot('a/n.txt'), 'utf8')).toBe('n');
+      expect(e.getProgress().error).toBeNull();
+      resetCalls();
+      await e.syncNow();
+      expect(remote.flatCalls).toBe(0);
+      expect(remote.listCalls.length).toBeGreaterThan(0);
+    });
+
+    it('any other failure of the flat list ends the run: nothing is deleted on a guess', async () => {
+      remote.put('/a/x.txt', 'x');
+      const e = makeRoot();
+      await e.syncNow();
+      remote.failFlat = new Error('503: down');
+      await e.syncNow();
+      expect(e.getProgress()).toMatchObject({ phase: 'error' });
+      expect(e.getProgress().error).toContain('503');
+      expect(existsSync(inRoot('a/x.txt'))).toBe(true);
+    });
+
+    it('a sync folder that is not the whole Disk always walks its folders', async () => {
+      remote.put('/Sync/a.txt', 'a');
+      await engine.syncNow();
+      await engine.syncNow();
+      expect(remote.flatCalls).toBe(0);
+    });
+
+    it('files in hidden folders stay out, as in the folder walk', async () => {
+      remote.put('/.cache/a.txt', 'h');
+      remote.put('/a/x.txt', 'x');
+      const e = makeRoot();
+      await e.syncNow();
+      await e.syncNow();
+      expect(existsSync(inRoot('.cache'))).toBe(false);
+      expect(existsSync(inRoot('a/x.txt'))).toBe(true);
+    });
+  });
+
+  describe('pausing cancels requests and transfers in flight', () => {
+    const make = (opts: Partial<ConstructorParameters<typeof SyncEngine>[2]> = {}) => {
+      const e = new SyncEngine(remote, db, { watch: false, settleMs: 0, minGapMs: 0, ...opts });
+      e.configure({ id: db.getPairs()[0]!.id, localPath: localDir, remotePath: '/Sync' });
+      return e;
+    };
+    /** Never answers; fails with the signal's reason once it fires. */
+    const hang = (seen: { signal?: AbortSignal }) => (signal?: AbortSignal) =>
+      new Promise<never>((_resolve, reject) => {
+        seen.signal = signal;
+        signal?.addEventListener('abort', () => reject(signal.reason));
+      });
+
+    it('a listing in flight is cancelled and the run ends as paused, not as an error', async () => {
+      const e = make();
+      const seen: { signal?: AbortSignal } = {};
+      remote.list = (_dir, signal) => hang(seen)(signal);
+      const run = e.syncNow();
+      await vi.waitFor(() => expect(seen.signal).toBeDefined());
+      e.stop();
+      await run;
+      expect(seen.signal!.aborted).toBe(true);
+      expect(e.getProgress()).toMatchObject({ phase: 'paused', error: null, failures: [] });
+    });
+
+    it('a download in flight is cancelled and is not reported as a failed file', async () => {
+      remote.put('/Sync/a.txt', 'a');
+      const e = make();
+      const seen: { signal?: AbortSignal } = {};
+      remote.download = (_r, _l, _p, _m, _e, signal) => hang(seen)(signal);
+      const run = e.syncNow();
+      await vi.waitFor(() => expect(seen.signal).toBeDefined());
+      e.stop();
+      await run;
+      expect(e.getProgress()).toMatchObject({ phase: 'paused', error: null, failures: [] });
+      expect(e.getProgress().lastSync).toBeNull();
+      expect(existsSync(local('a.txt'))).toBe(false);
+    });
+
+    it('every request of a run carries the same cancellation signal', async () => {
+      remote.put('/Sync/gone.txt', 'g');
+      const e = make();
+      await e.syncNow();
+      rmSync(local('gone.txt'));
+      write('up.txt', 'u');
+      mkdirSync(local('newdir'));
+      remote.put('/Sync/down.txt', 'd');
+      const signals: Record<string, unknown> = {};
+      const realList = remote.list.bind(remote);
+      const realStat = remote.stat.bind(remote);
+      const realMkdir = remote.mkdir.bind(remote);
+      const realUpload = remote.upload.bind(remote);
+      const realDownload = remote.download.bind(remote);
+      const realRemove = remote.remove.bind(remote);
+      remote.list = (d, s) => ((signals.list = s), realList(d, s));
+      remote.stat = (p, s) => ((signals.stat = s), realStat(p, s));
+      remote.mkdir = (p, s) => ((signals.mkdir = s), realMkdir(p, s));
+      remote.upload = (l, r, o, cb, s) => ((signals.upload = s), realUpload(l, r, o, cb, s));
+      remote.download = (r, l, cb, m, x, s) => (
+        (signals.download = s),
+        realDownload(r, l, cb, m, x, s)
+      );
+      remote.remove = (p, s) => ((signals.remove = s), realRemove(p, s));
+      await e.syncNow();
+      for (const name of ['list', 'stat', 'mkdir', 'upload', 'download', 'remove']) {
+        expect(signals[name], name).toBeInstanceOf(AbortSignal);
+      }
+      expect(new Set(Object.values(signals)).size).toBe(1);
+    });
+
+    it('a run waiting out the pause between runs does not start after the pause button', async () => {
+      const e = make({ minGapMs: 300 });
+      await e.syncNow();
+      let scans = 0;
+      e.onProgress(p => {
+        if (p.phase === 'scanning') scans++;
+      });
+      const second = e.syncNow();
+      await new Promise(r => setTimeout(r, 50));
+      e.stop();
+      await second;
+      expect(scans).toBe(0);
+    });
+
+    it('a full Disk (507) is not held back: the next run tries again at once', async () => {
+      write('big.bin', 'x');
+      const e = make({ retryBaseMs: 60_000 });
+      let tries = 0;
+      remote.upload = async () => {
+        tries++;
+        throw new Error('507: there is not enough free space on the Disk');
+      };
+      await e.syncNow();
+      await e.syncNow();
+      expect(tries).toBe(2);
+      expect(e.getProgress().failures.join()).not.toContain('next try in');
     });
   });
 

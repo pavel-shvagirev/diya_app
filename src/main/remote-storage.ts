@@ -22,26 +22,31 @@ function toEntry(m: FileMetadata): RemoteEntry {
 export class YandexRemote implements RemoteStorage {
   constructor(private readonly client: YandexDiskClient) {}
 
-  async list(remoteDir: string): Promise<RemoteEntry[]> {
-    return (await this.client.listFiles(remoteDir)).items.map(toEntry);
+  async list(remoteDir: string, signal?: AbortSignal): Promise<RemoteEntry[]> {
+    return (await this.client.listFolder(remoteDir, signal)).items.map(toEntry);
   }
 
-  async stat(remotePath: string): Promise<RemoteEntry> {
-    return toEntry(await this.client.getMeta(remotePath));
+  async listAllFiles(signal?: AbortSignal): Promise<RemoteEntry[]> {
+    return (await this.client.listAllFiles(signal)).map(toEntry);
   }
 
-  mkdir(remotePath: string): Promise<void> {
-    return this.client.mkdir(remotePath);
+  async stat(remotePath: string, signal?: AbortSignal): Promise<RemoteEntry> {
+    return toEntry(await this.client.getMeta(remotePath, signal));
+  }
+
+  mkdir(remotePath: string, signal?: AbortSignal): Promise<void> {
+    return this.client.mkdir(remotePath, signal);
   }
 
   async upload(
     localPath: string,
     remotePath: string,
     overwrite: boolean,
-    onProgress: (done: number, total: number) => void
+    onProgress: (done: number, total: number) => void,
+    signal?: AbortSignal
   ): Promise<void> {
     // 'accepted' (202) is a success too: the sync engine copes with a file the Disk shows late.
-    await uploadFile(this.client, localPath, remotePath, overwrite, onProgress);
+    await uploadFile(this.client, localPath, remotePath, overwrite, onProgress, signal);
   }
 
   download(
@@ -49,12 +54,13 @@ export class YandexRemote implements RemoteStorage {
     localPath: string,
     onProgress: (done: number, total: number) => void,
     mtime: Date,
-    expected?: { size?: number; md5?: string }
+    expected?: { size?: number; md5?: string },
+    signal?: AbortSignal
   ): Promise<void> {
-    return downloadFile(this.client, remotePath, localPath, onProgress, mtime, expected);
+    return downloadFile(this.client, remotePath, localPath, onProgress, mtime, expected, signal);
   }
 
-  remove(remotePath: string): Promise<void> {
-    return this.client.deleteFile(remotePath, false);
+  remove(remotePath: string, signal?: AbortSignal): Promise<void> {
+    return this.client.deleteFile(remotePath, false, signal);
   }
 }

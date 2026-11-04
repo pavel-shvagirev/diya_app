@@ -55,6 +55,29 @@ describe('new folder and rename', () => {
   });
 });
 
+describe('restore from the trash under a new name', () => {
+  it('asks for a name (starting from the old one) and restores under it; cancel does nothing', async () => {
+    const spy = vi
+      .spyOn(dialogs, 'prompt')
+      .mockResolvedValueOnce('fresh.txt')
+      .mockResolvedValueOnce(null);
+    await actions.restoreEntryAs(entry('old.txt'));
+    expect(spy.mock.calls[0]![0].initial).toBe('old.txt');
+    expect(spy.mock.calls[0]![0].validate!('a/b')).toBeTruthy();
+    expect(api.restoreFromTrash).toHaveBeenCalledWith('/old.txt', 'fresh.txt');
+    await actions.restoreEntryAs(entry('old.txt'));
+    expect(api.restoreFromTrash).toHaveBeenCalledTimes(1);
+  });
+
+  it('opening a folder in the trash lists it; a file is left alone', async () => {
+    await actions.openTrashEntry(entry('Old_1', 'dir'));
+    expect(api.getTrashList).toHaveBeenCalledWith('/Old_1');
+    api.getTrashList.mockClear();
+    await actions.openTrashEntry(entry('old.txt'));
+    expect(api.getTrashList).not.toHaveBeenCalled();
+  });
+});
+
 describe('delete, move, copy', () => {
   it('delete to trash asks first and does nothing for an empty selection', async () => {
     const confirm = vi

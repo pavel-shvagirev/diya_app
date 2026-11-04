@@ -182,8 +182,10 @@ export interface AppApi {
   publish: (path: string) => Promise<string>;
   unpublish: (path: string) => Promise<void>;
   getQuota: () => Promise<DiskInfo>;
-  getTrashList: () => Promise<FileInfoList>;
-  restoreFromTrash: (path: string) => Promise<void>;
+  /** The trash root, or a folder inside it (path relative to the trash root). */
+  getTrashList: (path?: string) => Promise<FileInfoList>;
+  /** Back to the old place; `name` restores it under a new name. */
+  restoreFromTrash: (path: string, name?: string) => Promise<void>;
   deleteFromTrash: (path: string) => Promise<void>;
   emptyTrash: () => Promise<void>;
   /** Real filesystem path of a File from a drop event. */

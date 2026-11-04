@@ -37,8 +37,9 @@ framework, no JS theming engine.
 ## Layout
 
 - **Toolbar:** back / forward / up, path bar (clickable breadcrumbs), name filter, actions
-  (Upload, New folder, Download, Share, Delete; Restore / Delete forever / Empty trash in the
-  trash view), refresh, settings.
+  (Upload, New folder, Download, Share, Delete; Restore / Restore as… / Delete forever / Empty
+  trash in the trash view, where the path bar follows folders opened inside the trash), refresh,
+  settings.
 - **Left: folder tree** (lazy, keyboard-navigable, drop target for moving items; the synced
   folder carries a badge; Trash is the last node). Width is draggable.
 - **Right: table** (Name, Modified, Size, Type; sortable; folders first; multi-select with

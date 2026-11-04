@@ -103,6 +103,31 @@ export function validateRemotePath(target: string): string {
 }
 
 /**
+ * Validate the name of one file or folder (for example the new name of a resource restored from
+ * the trash): one path segment, no separators, no control characters, at most 255 characters.
+ */
+export function validateResourceName(name: unknown): string {
+  if (typeof name !== 'string') {
+    throw new Error('Name must be a string');
+  }
+  const trimmed = name.trim();
+  if (trimmed.length === 0) {
+    throw new Error('Name cannot be empty');
+  }
+  if (trimmed.length > 255) {
+    throw new Error('Name is too long');
+  }
+  if (trimmed === '.' || trimmed === '..' || /[/\\]/.test(trimmed)) {
+    throw new Error('Name cannot be a path');
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(trimmed)) {
+    throw new Error('Name cannot contain control characters');
+  }
+  return trimmed;
+}
+
+/**
  * Validate a URL.
  * Only allows https URLs to Yandex domains and cloud-api.yandex.net.
  */

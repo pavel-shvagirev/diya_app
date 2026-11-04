@@ -43,8 +43,10 @@ const api: AppApi = {
   publish: (path: string) => invoke(CH.FILES_PUBLISH, path),
   unpublish: (path: string) => invoke(CH.FILES_UNPUBLISH, path),
   getQuota: () => invoke(CH.FILES_QUOTA),
-  getTrashList: () => invoke(CH.FILES_TRASH),
-  restoreFromTrash: (path: string) => invoke(CH.TRASH_RESTORE, path),
+  getTrashList: (path?: string) =>
+    path === undefined ? invoke(CH.FILES_TRASH) : invoke(CH.FILES_TRASH, path),
+  restoreFromTrash: (path: string, name?: string) =>
+    name === undefined ? invoke(CH.TRASH_RESTORE, path) : invoke(CH.TRASH_RESTORE, path, name),
   deleteFromTrash: (path: string) => invoke(CH.TRASH_DELETE, path),
   emptyTrash: () => invoke(CH.TRASH_EMPTY),
   pathForFile: (file: File) => webUtils.getPathForFile(file),

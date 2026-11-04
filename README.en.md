@@ -32,7 +32,8 @@ Unofficial desktop client for [Yandex Disk](https://disk.yandex.com/): a compact
 - **File manager:** folder tree, sortable table, breadcrumbs, name filter, drag and drop
   (upload from the OS, move between folders), keyboard control.
 - **Operations:** upload and download files and folders, new folder, rename, copy, move,
-  delete to the Disk trash, restore, delete forever, empty trash.
+  delete to the Disk trash, restore (also under a new name; folders in the trash can be opened),
+  delete forever, empty trash.
 - **Sync:** one pair "local folder ⇄ Disk folder", two-way, every 60 s and on local changes.
   A file changed on both sides keeps both versions (`name (conflict copy YYYY-MM-DD HH-mm).ext`; "конфликтная копия" in the Russian interface). Deletions on
   one side move the file to the trash of the other side. A run that would delete a suspicious

@@ -67,6 +67,61 @@ describe('browserStore', () => {
     expect(store().entries.map(e => e.path)).toEqual(['/old.txt_1']);
   });
 
+  describe('folders inside the trash', () => {
+    beforeEach(() => {
+      api.getTrashList.mockImplementation(async (p?: string) =>
+        list(
+          p === '/x_1'
+            ? [file('in.txt', { path: '/x_1/in.txt' }), dir('sub', '/x_1')]
+            : p === '/x_1/sub'
+              ? [file('deep.txt', { path: '/x_1/sub/deep.txt' })]
+              : [dir('x_1')]
+        )
+      );
+    });
+
+    it('opens a folder of the trash and keeps its path in the view', async () => {
+      await store().openTrash();
+      await store().openTrash({ path: '/x_1' });
+      expect(store().view).toEqual({ kind: 'trash', path: '/x_1' });
+      expect(api.getTrashList).toHaveBeenLastCalledWith('/x_1');
+      expect(store().entries.map(e => e.path)).toEqual(['/x_1/in.txt', '/x_1/sub']);
+    });
+
+    it('up goes to the parent folder, then to the root of the trash, then stays', async () => {
+      await store().openTrash({ path: '/x_1/sub' });
+      await store().up();
+      expect(store().view).toEqual({ kind: 'trash', path: '/x_1' });
+      await store().up();
+      expect(store().view).toEqual({ kind: 'trash' });
+      expect(api.getTrashList).toHaveBeenLastCalledWith();
+      api.getTrashList.mockClear();
+      await store().up();
+      expect(store().view).toEqual({ kind: 'trash' });
+      expect(api.getTrashList).not.toHaveBeenCalled();
+    });
+
+    it('back, forward and refresh return to the same folder of the trash', async () => {
+      await store().openTrash();
+      await store().openTrash({ path: '/x_1' });
+      await store().back();
+      expect(store().view).toEqual({ kind: 'trash' });
+      await store().forward();
+      expect(store().view).toEqual({ kind: 'trash', path: '/x_1' });
+      api.getTrashList.mockClear();
+      await store().refresh();
+      expect(api.getTrashList).toHaveBeenCalledWith('/x_1');
+    });
+
+    it('restoring under a new name passes the name on; without one the call is as before', async () => {
+      await store().openTrash();
+      await store().restoreEntries(['/x_1'], 'new.txt');
+      expect(api.restoreFromTrash).toHaveBeenCalledWith('/x_1', 'new.txt');
+      await store().restoreEntries(['/x_1']);
+      expect(api.restoreFromTrash).toHaveBeenLastCalledWith('/x_1');
+    });
+  });
+
   describe('selection', () => {
     beforeEach(async () => {
       api.listFiles.mockResolvedValue(list([file('a'), file('b'), file('c'), file('d')]));

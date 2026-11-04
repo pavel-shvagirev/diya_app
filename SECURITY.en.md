@@ -24,3 +24,4 @@ operating system, and steps to reproduce.
   folder; symbolic links are not followed; transfer links must be https; downloads are verified
   against the size and md5 the Disk reports.
 - Creating public links is currently disabled (`FEATURES.publicLinks`) and refused in the main process.
+- "Show in folder" opens only paths inside the sync folder or the app data folder.

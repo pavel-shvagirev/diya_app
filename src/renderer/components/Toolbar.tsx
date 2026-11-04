@@ -6,6 +6,7 @@ import {
   emptyTrash,
   newFolder,
   removeEntries,
+  restoreEntryAs,
   shareEntry,
 } from '../lib/actions.js';
 import { breadcrumbs } from '../lib/entries.js';
@@ -13,6 +14,9 @@ import { t } from '../lib/strings.js';
 import { useBrowserStore } from '../store/browserStore.js';
 import { useUiStore } from '../store/uiStore.js';
 import { Icon } from '../ui/Icon.js';
+
+/** The id the Disk appends to the name of a trashed item (`foo_1408546879`); not shown in the path bar. */
+const TRASH_ID = /_\d{6,}$/;
 
 export function Toolbar(): ReactElement {
   const view = useBrowserStore(s => s.view);
@@ -33,6 +37,7 @@ export function Toolbar(): ReactElement {
 
   const inTrash = view.kind === 'trash';
   const crumbs = view.kind === 'folder' ? breadcrumbs(view.path) : [];
+  const trashCrumbs = view.kind === 'trash' && view.path ? breadcrumbs(view.path) : [];
 
   return (
     <div className="toolbar" role="toolbar">
@@ -58,7 +63,7 @@ export function Toolbar(): ReactElement {
         className="btn btn--icon"
         title={t.up}
         aria-label={t.up}
-        disabled={inTrash || crumbs.length === 0}
+        disabled={inTrash ? trashCrumbs.length === 0 : crumbs.length === 0}
         onClick={() => void b().up()}
       >
         <Icon name="arrow-up" />
@@ -66,7 +71,27 @@ export function Toolbar(): ReactElement {
 
       <nav className="pathbar" aria-label="path" title={t.tipPathbar}>
         {inTrash ? (
-          <span className="crumb">{t.trash}</span>
+          trashCrumbs.length === 0 ? (
+            <span className="crumb">{t.trash}</span>
+          ) : (
+            <>
+              <button className="btn crumb" title={t.trash} onClick={() => void b().openTrash()}>
+                {t.trash}
+              </button>
+              {trashCrumbs.map((c, i) => (
+                <span key={c.path} style={{ display: 'contents' }}>
+                  <Icon name="chevron-right" size={12} className="crumb-sep" />
+                  <button
+                    className="btn crumb"
+                    title={c.path}
+                    onClick={() => void b().openTrash({ path: c.path })}
+                  >
+                    {i === 0 ? c.name.replace(TRASH_ID, '') : c.name}
+                  </button>
+                </span>
+              ))}
+            </>
+          )
         ) : (
           <>
             <button className="btn crumb" title={t.toRoot} onClick={() => void b().openFolder('/')}>
@@ -110,6 +135,16 @@ export function Toolbar(): ReactElement {
             onClick={() => void b().restoreEntries(selected.map(e => e.path))}
           >
             <Icon name="restore" /> <span className="btn__label">{t.restore}</span>
+          </button>
+          <button
+            className="btn"
+            title={
+              selected.length === 1 ? t.tipRestoreAs : `${t.tipRestoreAs} — ${t.hintSelectOne}`
+            }
+            disabled={selected.length !== 1}
+            onClick={() => selected[0] && void restoreEntryAs(selected[0])}
+          >
+            <Icon name="restore" /> <span className="btn__label">{t.restoreAs}</span>
           </button>
           <button
             className="btn btn--danger"

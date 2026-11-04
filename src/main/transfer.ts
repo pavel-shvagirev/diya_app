@@ -69,6 +69,54 @@ export const transferTuning = {
 /** The largest file the Disk takes at all (Yandex 360 subscribers; others: 1 GB). */
 export const MAX_UPLOAD_BYTES = 50 * 1024 ** 3;
 
+/**
+ * From this size on, the free space on the Disk is read before an upload is started (one request
+ * to `GET /v1/disk/`): a big file that cannot fit should fail at once, not after a long transfer.
+ */
+export const FREE_SPACE_CHECK_BYTES = 64 * 1024 ** 2;
+
+const megabytes = (bytes: number): string => `${Math.ceil(bytes / 1024 ** 2)} MB`;
+
+/**
+ * Refuse a file larger than the free space the Disk reports. A quota that cannot be read does not
+ * block the upload (the Disk answers 507 itself); a cancelled read does.
+ */
+async function assertFreeSpace(
+  client: YandexDiskClient,
+  size: number,
+  remotePath: string,
+  signal?: AbortSignal
+): Promise<void> {
+  let info: { total_space: number; used_space: number };
+  try {
+    info = await client.getDiskInfo(signal);
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    logger.warn(
+      'transfer',
+      `free space not checked before uploading ${remotePath}: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return;
+  }
+  const free = info.total_space - info.used_space;
+  if (size > free) {
+    logger.error('transfer', `upload ${remotePath}: ${size} B does not fit into ${free} B free`);
+    throw new YandexApiError(
+      507,
+      `507: there is not enough free space on the Disk (the file needs ${megabytes(size)}, ${megabytes(Math.max(free, 0))} free)`
+    );
+  }
+}
+
+/** Abort `ctrl` when `signal` fires; returns the function that removes the link. */
+function linkSignal(signal: AbortSignal | undefined, ctrl: AbortController): () => void {
+  if (!signal) return () => undefined;
+  const onAbort = (): void => ctrl.abort(signal.reason);
+  if (signal.aborted) onAbort();
+  else signal.addEventListener('abort', onAbort, { once: true });
+  return () => signal.removeEventListener('abort', onAbort);
+}
+
 /** Fires `onTimeout` unless kicked again in time. */
 class Watchdog {
   private timer: NodeJS.Timeout | undefined;
@@ -120,27 +168,36 @@ export async function uploadFile(
   localPath: string,
   remotePath: string,
   overwrite: boolean,
-  onProgress?: ProgressCallback
+  onProgress?: ProgressCallback,
+  signal?: AbortSignal
 ): Promise<UploadResult> {
   const started = Date.now();
+  signal?.throwIfAborted();
   const { size } = await stat(localPath);
   if (size > MAX_UPLOAD_BYTES) {
     throw new YandexApiError(413, `413: the file is larger than the Disk accepts (50 GB)`);
   }
+  // An overwrite frees the old copy, whose size is not known here: the Disk decides (507).
+  if (!overwrite && size >= FREE_SPACE_CHECK_BYTES) {
+    await assertFreeSpace(client, size, remotePath, signal);
+  }
   for (let attempt = 0; ; attempt++) {
-    const { href } = await client.getUploadHref(remotePath, overwrite);
+    signal?.throwIfAborted();
+    const { href } = await client.getUploadHref(remotePath, overwrite, signal);
     assertHttps(href);
     logger.info(
       'transfer',
       `upload ${remotePath} (${size} B${overwrite ? ', overwrite' : ''})${attempt ? `, attempt ${attempt + 1}` : ''}`
     );
     try {
-      const result = await putFile(href, localPath, size, remotePath, onProgress);
+      const result = await putFile(href, localPath, size, remotePath, onProgress, signal);
       logger.info('transfer', `uploaded ${remotePath}: ${size} B in ${Date.now() - started} ms`);
       onProgress?.(size, size);
       return result;
     } catch (err) {
-      if (attempt + 1 >= transferTuning.attempts || !isRetryableUpload(err)) throw err;
+      if (signal?.aborted || attempt + 1 >= transferTuning.attempts || !isRetryableUpload(err)) {
+        throw err;
+      }
       const delay = transferTuning.retryDelayMs * 2 ** attempt;
       logger.warn(
         'transfer',
@@ -157,9 +214,11 @@ async function putFile(
   localPath: string,
   size: number,
   remotePath: string,
-  onProgress?: ProgressCallback
+  onProgress?: ProgressCallback,
+  signal?: AbortSignal
 ): Promise<UploadResult> {
   const ctrl = new AbortController();
+  const unlink = linkSignal(signal, ctrl);
   const dog = new Watchdog(() => ctrl.abort());
   const body = counting(sent => {
     dog.kick(transferTuning.stallMs);
@@ -178,6 +237,7 @@ async function putFile(
   });
   source.pipe(body);
   const cleanup = (): void => {
+    unlink();
     dog.stop();
     source.destroy();
     body.destroy();
@@ -205,6 +265,7 @@ async function putFile(
     throw failure;
   }
   dog.stop();
+  unlink();
   if (!response.ok) {
     cleanup();
     logger.error('transfer', `upload ${remotePath} rejected: HTTP ${response.status}`);
@@ -261,14 +322,17 @@ export async function downloadFile(
   localPath: string,
   onProgress?: ProgressCallback,
   mtime?: Date,
-  expected?: ExpectedContent
+  expected?: ExpectedContent,
+  signal?: AbortSignal
 ): Promise<void> {
   const started = Date.now();
-  const { href } = await client.getDownloadHref(remotePath);
+  signal?.throwIfAborted();
+  const { href } = await client.getDownloadHref(remotePath, signal);
   assertHttps(href);
   logger.info('transfer', `download ${remotePath}`);
   const part = `${localPath}.part`;
   const ctrl = new AbortController();
+  const unlink = linkSignal(signal, ctrl);
   const dog = new Watchdog(() => ctrl.abort());
   try {
     dog.kick(transferTuning.headersMs);
@@ -315,6 +379,7 @@ export async function downloadFile(
     await rm(part, { force: true });
     throw failure;
   } finally {
+    unlink();
     dog.stop();
   }
 }

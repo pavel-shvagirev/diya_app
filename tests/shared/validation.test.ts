@@ -7,6 +7,7 @@ import {
   validatePath,
   validateLocalPath,
   validateRemotePath,
+  validateResourceName,
   validateUrl,
 } from '../../src/shared/validation';
 
@@ -190,5 +191,30 @@ describe('non-string input', () => {
 
   it('resolveSafePath returns the base itself for "."', () => {
     expect(resolveSafePath('/base', '.')).toBe(resolve('/base'));
+  });
+});
+
+// ── validateResourceName ───────────────────────────────────────
+
+describe('validateResourceName', () => {
+  it('accepts an ordinary name and trims it', () => {
+    expect(validateResourceName('  photo (1).png ')).toBe('photo (1).png');
+    expect(validateResourceName('Отчёт 2026.docx')).toBe('Отчёт 2026.docx');
+  });
+
+  it.each([
+    ['empty', ''],
+    ['blank', '   '],
+    ['a slash', 'a/b'],
+    ['a backslash', 'a\\b'],
+    ['a dot', '.'],
+    ['two dots', '..'],
+    ['a null byte', 'a\0b'],
+    ['a control character', 'a\nb'],
+    ['a name longer than 255 characters', 'x'.repeat(256)],
+    ['not a string', 42],
+    ['undefined', undefined],
+  ])('rejects %s', (_what, name) => {
+    expect(() => validateResourceName(name as never)).toThrow();
   });
 });

@@ -14,9 +14,10 @@ Electron app, three processes of code:
 - **`main.ts`** — start-up and lifecycle: creates the services below, wires IPC, tray and menus,
   single-instance lock, quit handling. Excluded from unit coverage; the e2e run covers it.
 - **`yandex-api.ts`** — REST client for `https://cloud-api.yandex.net/v1/disk` (list with
-  pagination, upload/download links, copy/move/delete/mkdir, publish/unpublish, trash,
-  operations). Retries 429/5xx with backoff, polls 202 operations (only on the API origin),
-  on 401 tries the refresh token once and otherwise signs out.
+  pagination, the flat list of all files, upload/download links, copy/move/delete/mkdir,
+  publish/unpublish, trash with its folders and restore under a new name, operations). Retries
+  429/5xx with backoff, polls 202 operations (only on the API origin), on 401 tries the refresh
+  token once and otherwise signs out. Calls take an optional `AbortSignal`.
 - **`oauth.ts`, `auth-service.ts`, `app-config.ts`, `token-store.ts`** — sign-in by the Yandex
   OAuth _device flow_ (code shown in the app, confirmed in a browser; no redirect URI; the user's own application ID
   and secret), token refresh, Client ID resolution (typed → `YADISK_CLIENT_ID`;
@@ -28,7 +29,8 @@ Electron app, three processes of code:
   and are renamed on success.
 - **`sync-engine.ts`, `sync-db.ts`, `fs-watcher.ts`, `remote-storage.ts`, `sync-control.ts`** —
   see below.
-- **`ipc-handlers.ts`** — every `window.api` call; validates paths and arguments.
+- **`ipc-handlers.ts`** — every `window.api` call; validates paths and arguments ("show in
+  folder" only for the sync folder and the app data folder).
 - **`logger.ts`, `log-window.ts`** — ring buffer + rotating file, redaction, the log window.
 - **Windows and menus:** `window-holder.ts` (re-creates the main window on demand),
   `quit-guard.ts` + `hint-window.ts` (double Cmd/Ctrl+Q), `tray.ts`, `app-menu.ts`,
@@ -39,8 +41,9 @@ Electron app, three processes of code:
 
 One pair (local folder ⇄ Disk folder). Every run (60 s timer, local file events, "sync now"):
 
-1. Scan both trees (the Disk side folder by folder) and read the last agreed state from
-   `sync_state` (SQLite).
+1. Scan both trees and read the last agreed state from `sync_state` (SQLite). The Disk side is
+   read folder by folder, or, when the whole Disk is synced, mostly from the flat list of files
+   (see below).
 2. For each path decide from _(local, Disk, last state)_: upload, download, conflict, delete on
    one side, or nothing; the reason is logged at debug level.
 3. Execute: folders first, then files, deletions last. After an upload the Disk size is checked;
@@ -49,7 +52,23 @@ One pair (local folder ⇄ Disk folder). Every run (60 s timer, local file event
 Runs are kept at least 5 s apart ("sync now" is exempt and starts at once), and a timer tick during a run queues nothing. A file the Disk
 answers with 5xx or 429 is not requested again for 1 min, then 2, 4 … up to 30 min (still reported
 as failed meanwhile).
-A pause (`stop()`) ends a run in flight between listed folders and between operations: the run is not recorded as finished and is not an error. A "sync now" click during a run queues no repeat.
+A pause (`stop()`) cancels the run in flight: every request and transfer of a run carries one
+`AbortSignal` (`RemoteStorage` takes it as the last argument), so a listing or a transfer stops
+at once, a half-downloaded `*.part` is removed, and the run ends as paused: not recorded as
+finished, not an error. Pausing during the 5 s gap cancels the run waiting there, and quitting
+the app pauses too. A "sync now" click during a run queues no repeat.
+
+**Reading the Disk.** The API has no change feed, and a folder listing costs one request per
+folder. When the sync root is `/` (the whole Disk) and the remote supports it
+(`RemoteStorage.listAllFiles`, `GET /v1/disk/resources/files`), only the first run, "sync now",
+a run after 30 minutes (`fullScanMs`) and a run after the Disk refused the flat list (HTTP 400,
+remembered for the session) walk the folders; the others read the flat list: one request per
+1000 files, only the fields the engine uses (`fields`). The flat list has no folders, so they
+come from the paths of the files and from the last full scan (an empty folder created on the Disk
+in between is seen at the next full scan). The list is read page by page while the Disk
+changes, so a file can slip through: a file that is only _missing_ from a flat list is deleted
+locally only after a `stat` answers 404. Any other failure of the flat list ends the run.
+A sync folder other than `/` always walks its folders.
 
 Safety rules: a file changed on both sides keeps both versions; a file whose size/md5 cannot be
 compared yet waits for the next run; files modified in the last 2 s are deferred; a run whose
@@ -68,6 +87,12 @@ emptied, or when the local folder vanished; local deletions are carried to the D
 - Transfers (`transfer.ts`): a limit on connecting, on silence while bytes flow and on the Disk's
   answer after an upload; an upload is repeated after 500/503 or a failed connection with a fresh
   link; downloads are verified (size, md5, announced length) before they replace anything.
+  Every call takes an `AbortSignal` (pause, quit): nothing is sent after it fires and an upload
+  or download in flight is cut off, not repeated.
+- An upload of 64 MB or more (not an overwrite, whose old size is unknown) first reads the free
+  space (`GET /v1/disk/`) and fails at once with 507 and the numbers if the file cannot fit; if
+  the quota cannot be read the upload goes on and the Disk decides. A 507 is not held back by the
+  sync engine: the next run tries again.
 
 ## Security model
 

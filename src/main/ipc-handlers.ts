@@ -16,6 +16,7 @@ import {
   resolveSafePath,
   validateLocalPath,
   validateRemotePath,
+  validateResourceName,
   validateUrl,
 } from '../shared/validation.js';
 import { errorStatus } from './api-error.js';
@@ -43,6 +44,12 @@ type Handler = (e: IpcMainInvokeEvent, ...args: any[]) => unknown; // eslint-dis
 function handle(channel: string, fn: Handler): void {
   ipcMain.removeHandler(channel);
   ipcMain.handle(channel, trusted(fn));
+}
+
+/** True when `target` is `base` itself or lies beneath it (no `..` escape, same drive). */
+function isInside(base: string, target: string): boolean {
+  const rel = path.relative(path.resolve(base), path.resolve(target));
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
 const joinRemote = (dir: string, name: string): string => `${dir === '/' ? '' : dir}/${name}`;
@@ -312,10 +319,15 @@ export function registerIpcHandlers(
 
   // ── Trash ──────────────────────────────────────────────────
 
-  reg(CH.FILES_TRASH, () => needClient().getTrashResources());
-  reg(CH.TRASH_RESTORE, (_e, p: string) => {
+  reg(CH.FILES_TRASH, (_e, p?: string) => {
+    // A folder inside the trash, by its path relative to the trash root; none means the root.
+    if (p !== undefined) validateRemotePath(p);
+    return needClient().getTrashResources(p);
+  });
+  reg(CH.TRASH_RESTORE, (_e, p: string, name?: unknown) => {
     validateRemotePath(p);
-    return needClient().restoreFromTrash(p);
+    if (name === undefined) return needClient().restoreFromTrash(p);
+    return needClient().restoreFromTrash(p, validateResourceName(name));
   });
   reg(CH.TRASH_DELETE, (_e, p: string) => {
     validateRemotePath(p);
@@ -416,6 +428,11 @@ export function registerIpcHandlers(
   });
   reg(CH.SYSTEM_SHOW_IN_FOLDER, (_e, p: string) => {
     validateLocalPath(p);
+    // A compromised renderer must not be able to point the file manager at arbitrary paths.
+    const allowed = [...(syncDb?.getPairs().map(x => x.localPath) ?? []), ...protectedPaths];
+    if (!allowed.some(base => isInside(base, p))) {
+      throw new Error('Only the sync folder and the app data folder can be shown');
+    }
     shell.showItemInFolder(p);
     return Promise.resolve();
   });

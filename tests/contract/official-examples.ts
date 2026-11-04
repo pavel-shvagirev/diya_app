@@ -130,3 +130,36 @@ export const ERROR_OBJECT = {
   description: 'resource already exists',
   error: 'PlatformResourceAlreadyExists',
 };
+
+/**
+ * reference/all-files (https://yandex.com/dev/disk-api/doc/ru/reference/all-files): the
+ * FilesResourceList sample, the answer of `GET /v1/disk/resources/files`. Only files, no `total`.
+ */
+export const FILES_RESOURCE_LIST = {
+  items: [
+    {
+      name: 'photo2.png',
+      preview: 'https://downloader.disk.yandex.ru/preview/...',
+      created: '2014-04-22T14:57:13+04:00',
+      modified: '2014-04-22T14:57:14+04:00',
+      path: 'disk:/foo/photo2.png',
+      md5: '53f4dc6379c8f95ddf11b9508cfea271',
+      type: 'file',
+      mime_type: 'image/png',
+      size: 54321,
+    },
+    {
+      name: 'photo1.png',
+      preview: 'https://downloader.disk.yandex.ru/preview/...',
+      created: '2014-04-21T14:57:13+04:00',
+      modified: '2014-04-21T14:57:14+04:00',
+      path: 'disk:/foo/photo1.png',
+      md5: '4334dc6379c8f95ddf11b9508cfea271',
+      type: 'file',
+      mime_type: 'image/png',
+      size: 34567,
+    },
+  ],
+  limit: 20,
+  offset: 0,
+};

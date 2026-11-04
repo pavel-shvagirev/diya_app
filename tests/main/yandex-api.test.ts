@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -158,6 +158,134 @@ describe('YandexDiskClient', () => {
     await client.emptyTrash();
     expect(mockFetch.mock.calls[0][0]).toBe(`${BASE}/trash/resources/restore?path=%2Fx_9`);
     expect(mockFetch.mock.calls[1][0]).toBe(`${BASE}/trash/resources`);
+  });
+
+  describe('listings for the sync engine ask only for the fields it needs', () => {
+    const file = (name: string, dir = '') => ({
+      type: 'file',
+      name,
+      path: `disk:${dir}/${name}`,
+      size: 3,
+      modified: '2026-01-01T00:00:00+00:00',
+      md5: 'abc',
+    });
+
+    it('listFolder lists a folder with a fields filter and keeps what the engine reads', async () => {
+      mockFetch.mockResolvedValueOnce(
+        res(200, { _embedded: { total: 1, items: [file('a.txt', '/Docs')] } })
+      );
+      const list = await client.listFolder('/Docs');
+      const url = decodeURIComponent(mockFetch.mock.calls[0][0] as string);
+      expect(url).toContain('/resources?path=/Docs&limit=200&offset=0&fields=');
+      for (const key of ['name', 'path', 'type', 'size', 'modified', 'md5']) {
+        expect(url).toContain(`_embedded.items.${key}`);
+      }
+      expect(url).toContain('_embedded.total');
+      expect(list.items[0]).toMatchObject({ name: 'a.txt', path: '/Docs/a.txt', md5: 'abc' });
+    });
+
+    it('listAllFiles reads the flat list page by page until an empty page', async () => {
+      mockFetch
+        .mockResolvedValueOnce(res(200, { items: [file('a'), file('b')], limit: 1000, offset: 0 }))
+        .mockResolvedValueOnce(res(200, { items: [file('c', '/x')], limit: 1000, offset: 2 }))
+        .mockResolvedValueOnce(res(200, { items: [], limit: 1000, offset: 3 }));
+      const all = await client.listAllFiles();
+      expect(all.map(f => f.path)).toEqual(['/a', '/b', '/x/c']);
+      const urls = mockFetch.mock.calls.map(c => decodeURIComponent(c[0] as string));
+      expect(urls[0]).toContain('/resources/files?limit=1000&offset=0&fields=');
+      expect(urls[0]).toContain('items.md5');
+      expect(urls[1]).toContain('offset=2');
+      expect(urls[2]).toContain('offset=3');
+    });
+
+    it('listAllFiles refuses a Disk that keeps answering with the same page', async () => {
+      mockFetch.mockResolvedValue(res(200, { items: [file('a')] }));
+      await expect(client.listAllFiles()).rejects.toThrow(/does not advance/);
+    });
+
+    it('listAllFiles passes the signal and stops when it fires', async () => {
+      const ctrl = new AbortController();
+      ctrl.abort();
+      await expect(client.listAllFiles(ctrl.signal)).rejects.toMatchObject({ name: 'AbortError' });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a caller signal cancels requests in flight', () => {
+    afterEach(() => mockFetch.mockReset());
+
+    /** A fetch that never answers; it fails when its signal fires, as the real one does. */
+    const hang = (): void => {
+      mockFetch.mockImplementation(
+        (_u: unknown, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+          })
+      );
+    };
+
+    it('aborts a listing at once: one request, no retry, no timeout error', async () => {
+      hang();
+      const ctrl = new AbortController();
+      const pending = client.listFiles('/', ctrl.signal);
+      await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+      ctrl.abort();
+      await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends nothing when the signal is already aborted', async () => {
+      const ctrl = new AbortController();
+      ctrl.abort();
+      await expect(client.getMeta('/a', ctrl.signal)).rejects.toMatchObject({ name: 'AbortError' });
+      await expect(client.getDownloadHref('/a', ctrl.signal)).rejects.toMatchObject({
+        name: 'AbortError',
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('is passed on by the link, mutation and disk-info calls', async () => {
+      mockFetch.mockResolvedValue(res(200, { href: 'https://x.test/u' }));
+      const ctrl = new AbortController();
+      await client.getUploadHref('/a', false, ctrl.signal);
+      await client.getDiskInfo(ctrl.signal);
+      await client.deleteFile('/a', false, ctrl.signal);
+      await client.mkdir('/b', ctrl.signal);
+      ctrl.abort();
+      for (const call of mockFetch.mock.calls) expect(call[1].signal.aborted).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(4);
+    });
+
+    it('stops polling an operation when aborted', async () => {
+      mockFetch.mockResolvedValue(res(200, { status: 'in-progress' }));
+      const ctrl = new AbortController();
+      const pending = client.pollAsyncOp(`${BASE}/operations?id=1`, ctrl.signal);
+      await vi.waitFor(() => expect(mockFetch).toHaveBeenCalled());
+      ctrl.abort();
+      await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    });
+  });
+
+  it('lists a folder inside the trash by its path relative to the trash root', async () => {
+    mockFetch.mockResolvedValueOnce(
+      res(200, {
+        _embedded: {
+          total: 1,
+          items: [{ type: 'file', name: 'in.txt', path: 'trash:/x_9/in.txt' }],
+        },
+      })
+    );
+    const list = await client.getTrashResources('/x_9');
+    expect(mockFetch.mock.calls[0][0]).toContain('/trash/resources?path=%2Fx_9&limit=200');
+    expect(list.items[0]?.path).toBe('/x_9/in.txt');
+  });
+
+  it('restoreFromTrash can give the restored resource a new name', async () => {
+    mockFetch.mockResolvedValue(res(201, {}));
+    await client.restoreFromTrash('/x_9', 'new name.txt');
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      `${BASE}/trash/resources/restore?path=%2Fx_9&name=new%20name.txt`
+    );
   });
 
   it('retries 429/5xx with backoff then succeeds', async () => {
@@ -400,6 +528,7 @@ describe('YandexDiskClient: network failures, timeouts and server advice', () =>
         })
     );
     const pending = quick().request(`${BASE}/`, { signal: ctrl.signal });
+    await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
     ctrl.abort();
     await expect(pending).rejects.toBeDefined();
     expect(mockFetch).toHaveBeenCalledTimes(1);

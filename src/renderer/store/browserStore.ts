@@ -23,7 +23,8 @@ import { t } from '../lib/strings.js';
 import { useErrorStore } from './errorStore.js';
 import type { FileMetadata } from '../../shared/types.js';
 
-export type View = { kind: 'folder'; path: string } | { kind: 'trash' };
+/** `path` of a trash view: a folder inside the trash, relative to its root (none: the root). */
+export type View = { kind: 'folder'; path: string } | { kind: 'trash'; path?: string };
 
 export interface TreeNode {
   /** Child folder paths. */
@@ -57,7 +58,7 @@ interface BrowserState {
   quota: Quota | null;
 
   openFolder: (path: string, opts?: { push?: boolean }) => Promise<void>;
-  openTrash: (opts?: { push?: boolean }) => Promise<void>;
+  openTrash: (opts?: { push?: boolean; path?: string }) => Promise<void>;
   refresh: () => Promise<void>;
   back: () => Promise<void>;
   forward: () => Promise<void>;
@@ -82,7 +83,8 @@ interface BrowserState {
   unshareEntry: (path: string) => Promise<void>;
   downloadEntries: (paths: string[]) => Promise<void>;
   uploadFiles: (localPaths?: string[]) => Promise<void>;
-  restoreEntries: (paths: string[]) => Promise<void>;
+  /** Put items back from the trash; `name` (one item only) restores under a new name. */
+  restoreEntries: (paths: string[], name?: string) => Promise<void>;
   emptyTrash: () => Promise<void>;
 }
 
@@ -128,11 +130,12 @@ export const useBrowserStore = create<BrowserState>((set, get) => {
     }
   };
 
-  const refreshView = async (): Promise<void> => {
-    const { view } = get();
-    if (view.kind === 'folder') await get().openFolder(view.path, { push: false });
-    else await get().openTrash({ push: false });
-  };
+  const openView = (view: View, push: boolean): Promise<void> =>
+    view.kind === 'folder'
+      ? get().openFolder(view.path, { push })
+      : get().openTrash({ push, path: view.path });
+
+  const refreshView = (): Promise<void> => openView(get().view, false);
 
   /** Run an operation; report failures; always re-read the listing afterwards. */
   const run = async (op: () => Promise<void>, touched: string[] = []): Promise<void> => {
@@ -203,13 +206,15 @@ export const useBrowserStore = create<BrowserState>((set, get) => {
     openTrash: async opts => {
       const seq = ++loadSeq;
       set({ loading: true, error: null, selection: [], anchor: null, filter: '' });
+      const path = opts?.path && opts.path !== '/' ? opts.path : undefined;
+      const view: View = path ? { kind: 'trash', path } : { kind: 'trash' };
       try {
-        const res = await window.api.getTrashList();
+        const res = path ? await window.api.getTrashList(path) : await window.api.getTrashList();
         if (seq !== loadSeq) return;
-        show({ kind: 'trash' }, res.items.map(toEntry), opts?.push ?? true);
+        show(view, res.items.map(toEntry), opts?.push ?? true);
       } catch (e) {
         if (seq !== loadSeq) return;
-        set({ loading: false, error: errMsg(e), view: { kind: 'trash' }, entries: [] });
+        set({ loading: false, error: errMsg(e), view, entries: [] });
       }
     },
 
@@ -221,8 +226,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => {
       const target = history[historyIndex - 1];
       if (!target) return;
       set({ historyIndex: historyIndex - 1 });
-      if (target.kind === 'folder') await get().openFolder(target.path, { push: false });
-      else await get().openTrash({ push: false });
+      await openView(target, false);
     },
 
     forward: async () => {
@@ -231,13 +235,13 @@ export const useBrowserStore = create<BrowserState>((set, get) => {
       const target = history[historyIndex + 1];
       if (!target) return;
       set({ historyIndex: historyIndex + 1 });
-      if (target.kind === 'folder') await get().openFolder(target.path, { push: false });
-      else await get().openTrash({ push: false });
+      await openView(target, false);
     },
 
     up: async () => {
       const v = get().view;
       if (v.kind === 'folder' && v.path !== '/') await get().openFolder(parentOf(v.path));
+      else if (v.kind === 'trash' && v.path) await get().openTrash({ path: parentOf(v.path) });
     },
 
     select: (path, mode) => {
@@ -375,9 +379,12 @@ export const useBrowserStore = create<BrowserState>((set, get) => {
       void get().loadQuota();
     },
 
-    restoreEntries: paths =>
+    restoreEntries: (paths, name) =>
       run(async () => {
-        for (const p of paths) await window.api.restoreFromTrash(p);
+        for (const p of paths) {
+          if (name === undefined) await window.api.restoreFromTrash(p);
+          else await window.api.restoreFromTrash(p, name);
+        }
       }, Object.keys(get().tree)),
 
     emptyTrash: () => run(() => window.api.emptyTrash()),

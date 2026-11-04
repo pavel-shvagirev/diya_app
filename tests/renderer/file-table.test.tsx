@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FileTable } from '../../src/renderer/components/FileTable.js';
 import { t } from '../../src/renderer/lib/strings.js';
 import { useBrowserStore } from '../../src/renderer/store/browserStore.js';
-import { useDialogStore } from '../../src/renderer/store/dialogStore.js';
+import { dialogs, useDialogStore } from '../../src/renderer/store/dialogStore.js';
 import { dir, file, installApi, list } from './helpers.js';
 
 let api: ReturnType<typeof installApi>;
@@ -202,12 +202,66 @@ describe('context menu', () => {
     await useBrowserStore.getState().openTrash();
     render(<FileTable />);
     fireEvent.contextMenu(row('/old.txt'));
-    expect(labels()).toEqual([t.restore, t.deleteForever]);
+    expect(labels()).toEqual([t.restore, t.restoreAs, t.deleteForever]);
     fireEvent.click(screen.getByText(t.restore));
     await waitFor(() => expect(api.restoreFromTrash).toHaveBeenCalledWith('/old.txt'));
     fireEvent.contextMenu(row('/old.txt'));
     fireEvent.click(screen.getByText(t.deleteForever));
     await waitFor(() => expect(useDialogStore.getState().current?.kind).toBe('confirm'));
+  });
+});
+
+describe('folders in the trash', () => {
+  const labels = () => screen.getAllByRole('menuitem').map(m => m.textContent);
+
+  beforeEach(() => {
+    api.getTrashList.mockImplementation(async (p?: string) =>
+      list(
+        p === '/Old_1'
+          ? [file('in.txt', { path: '/Old_1/in.txt' })]
+          : [
+              dir('Old_1'),
+              file('old.txt', { path: '/old.txt' }),
+              file('two.txt', { path: '/two.txt' }),
+            ]
+      )
+    );
+  });
+
+  it('double-click opens a folder and leaves a file alone', async () => {
+    await useBrowserStore.getState().openTrash();
+    render(<FileTable />);
+    fireEvent.doubleClick(row('/old.txt'));
+    expect(api.getTrashList).toHaveBeenCalledTimes(1);
+    fireEvent.doubleClick(row('/Old_1'));
+    await waitFor(() =>
+      expect(useBrowserStore.getState().view).toEqual({ kind: 'trash', path: '/Old_1' })
+    );
+  });
+
+  it('Enter opens the selected folder', async () => {
+    await useBrowserStore.getState().openTrash();
+    render(<FileTable />);
+    fireEvent.click(row('/Old_1'));
+    fireEvent.keyDown(table(), { key: 'Enter' });
+    await waitFor(() =>
+      expect(useBrowserStore.getState().view).toEqual({ kind: 'trash', path: '/Old_1' })
+    );
+  });
+
+  it('"Restore as…" is offered for one item only, and restores under the name given', async () => {
+    await useBrowserStore.getState().openTrash();
+    render(<FileTable />);
+    fireEvent.click(row('/old.txt'));
+    fireEvent.click(row('/two.txt'), { ctrlKey: true });
+    fireEvent.contextMenu(row('/old.txt'));
+    expect(labels()).toEqual([t.restore, t.deleteForever]);
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    fireEvent.click(row('/old.txt'));
+    vi.spyOn(dialogs, 'prompt').mockResolvedValue('again.txt');
+    fireEvent.contextMenu(row('/old.txt'));
+    fireEvent.click(screen.getByText(t.restoreAs));
+    await waitFor(() => expect(api.restoreFromTrash).toHaveBeenCalledWith('/old.txt', 'again.txt'));
   });
 });
 

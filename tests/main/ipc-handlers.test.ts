@@ -182,6 +182,28 @@ describe('IPC handlers', () => {
     expect(() => call(CH.FILES_QUOTA)).toThrow('Not signed in');
   });
 
+  it('a folder inside the trash can be listed; its path is validated', async () => {
+    const c = makeClient();
+    registerIpcHandlers(win, c as never);
+    await call(CH.FILES_TRASH);
+    await call(CH.FILES_TRASH, '/x_1/sub');
+    expect(c.getTrashResources).toHaveBeenNthCalledWith(1, undefined);
+    expect(c.getTrashResources).toHaveBeenNthCalledWith(2, '/x_1/sub');
+    expect(() => call(CH.FILES_TRASH, '/x_1/../..')).toThrow();
+    expect(() => call(CH.FILES_TRASH, 'relative')).toThrow();
+  });
+
+  it('restoring from the trash can give a new name, which is validated', async () => {
+    const c = makeClient();
+    registerIpcHandlers(win, c as never);
+    await call(CH.TRASH_RESTORE, '/x_1', '  new.txt ');
+    expect(c.restoreFromTrash).toHaveBeenCalledWith('/x_1', 'new.txt');
+    for (const bad of ['', 'a/b', '..', 'x'.repeat(256), 7]) {
+      expect(() => call(CH.TRASH_RESTORE, '/x_1', bad)).toThrow();
+    }
+    expect(c.restoreFromTrash).toHaveBeenCalledTimes(1);
+  });
+
   it('trash channels hit the client', async () => {
     const c = makeClient();
     registerIpcHandlers(win, c as never);
@@ -563,11 +585,33 @@ describe('IPC handlers', () => {
       expect(send.mock.calls.map(x => x[1]).some(e => e?.status === 'error')).toBe(true);
     });
 
-    it('show-in-folder validates the path and opens the file manager', async () => {
+    it('show-in-folder opens only the sync folder, the app data folder and what is inside them', async () => {
+      const sync = dirIn('show');
+      const db = makeDb();
+      db.addSyncPair(sync, '/');
+      registerIpcHandlers(win, makeClient() as never, db as never, undefined, undefined, [
+        '/var/app-data',
+      ]);
+      await call(CH.SYSTEM_SHOW_IN_FOLDER, sync);
+      await call(CH.SYSTEM_SHOW_IN_FOLDER, `${sync}/docs/a.txt`);
+      await call(CH.SYSTEM_SHOW_IN_FOLDER, '/var/app-data/logs/diya.log');
+      expect(shellMock.showItemInFolder.mock.calls.map(c => c[0])).toEqual([
+        sync,
+        `${sync}/docs/a.txt`,
+        '/var/app-data/logs/diya.log',
+      ]);
+      shellMock.showItemInFolder.mockClear();
+      expect(() => call(CH.SYSTEM_SHOW_IN_FOLDER, '/etc/passwd')).toThrow(/sync folder/);
+      expect(() => call(CH.SYSTEM_SHOW_IN_FOLDER, `${sync}-other/a.txt`)).toThrow(/sync folder/);
+      expect(() => call(CH.SYSTEM_SHOW_IN_FOLDER, `${sync}/../x`)).toThrow();
+      expect(() => call(CH.SYSTEM_SHOW_IN_FOLDER, 'relative/path')).toThrow();
+      expect(shellMock.showItemInFolder).not.toHaveBeenCalled();
+    });
+
+    it('show-in-folder refuses everything when no folder is configured', () => {
       registerIpcHandlers(win, makeClient() as never);
-      await call(CH.SYSTEM_SHOW_IN_FOLDER, '/home/u/file.txt');
-      expect(shellMock.showItemInFolder).toHaveBeenCalledWith('/home/u/file.txt');
-      expect(() => call(CH.SYSTEM_SHOW_IN_FOLDER, '/home/u/../../etc')).toThrow();
+      expect(() => call(CH.SYSTEM_SHOW_IN_FOLDER, '/home/u/file.txt')).toThrow(/sync folder/);
+      expect(shellMock.showItemInFolder).not.toHaveBeenCalled();
     });
 
     it('opens an allowed external link and refuses others', async () => {

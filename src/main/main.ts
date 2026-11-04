@@ -315,6 +315,7 @@ app.on('before-quit', event => {
     return;
   }
   hideHint();
+  syncEngine?.stop(); // cancels the run in flight: no request or transfer is left hanging
   logger.info('app', 'quitting');
   logger.close();
 });

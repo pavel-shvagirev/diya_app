@@ -273,6 +273,41 @@ describe('Toolbar', () => {
     expect(useBrowserStore.getState().filter).toBe('alp');
   });
 
+  it('inside a folder of the trash the path bar shows it and Up leads out', async () => {
+    api.getTrashList.mockImplementation(async (p?: string) =>
+      list(p ? [file('in.txt', { path: `${p}/in.txt` })] : [])
+    );
+    await useBrowserStore.getState().openTrash();
+    const { rerender } = render(<Toolbar />);
+    expect(screen.getByTitle(t.up)).toBeDisabled(); // the root of the trash has no parent
+    await useBrowserStore.getState().openTrash({ path: '/Old_1700000000/sub' });
+    rerender(<Toolbar />);
+    expect(screen.getByText('Old')).toBeInTheDocument(); // the id the Disk adds is not shown
+    expect(screen.getByText('sub')).toBeInTheDocument();
+    expect(screen.getByTitle(t.up)).toBeEnabled();
+    fireEvent.click(screen.getByTitle(t.up));
+    await waitFor(() =>
+      expect(useBrowserStore.getState().view).toEqual({ kind: 'trash', path: '/Old_1700000000' })
+    );
+    fireEvent.click(screen.getByTitle(t.trash)); // the first crumb goes to the root of the trash
+    await waitFor(() => expect(useBrowserStore.getState().view).toEqual({ kind: 'trash' }));
+  });
+
+  it('"Restore as…" needs exactly one selected item and says so', async () => {
+    api.getTrashList.mockResolvedValue(
+      list([file('a.txt', { path: '/a.txt' }), file('b.txt', { path: '/b.txt' })])
+    );
+    await useBrowserStore.getState().openTrash();
+    render(<Toolbar />);
+    const button = screen.getByText(t.restoreAs).closest('button')!;
+    expect(button).toBeDisabled();
+    expect(button.title).toContain(t.hintSelectOne);
+    act(() => useBrowserStore.getState().select('/a.txt', 'replace'));
+    expect(button).toBeEnabled();
+    act(() => useBrowserStore.getState().select('/b.txt', 'toggle'));
+    expect(button).toBeDisabled();
+  });
+
   it('trash view swaps the actions', async () => {
     await useBrowserStore.getState().openTrash();
     render(<Toolbar />);

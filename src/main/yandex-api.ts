@@ -49,6 +49,13 @@ function retryAfterMs(header: string | null | undefined, now = Date.now()): numb
 }
 
 const PAGE_SIZE = 200;
+/** Pages of the flat file list. The listing is read until an empty page, whatever the Disk caps. */
+const FLAT_PAGE_SIZE = 1000;
+
+/** What the sync engine reads of a resource: no previews, links or custom properties. */
+const SYNC_KEYS = ['name', 'path', 'type', 'size', 'modified', 'md5'];
+const FOLDER_FIELDS = [...SYNC_KEYS.map(k => `_embedded.items.${k}`), '_embedded.total'].join(',');
+const FLAT_FIELDS = SYNC_KEYS.map(k => `items.${k}`).join(',');
 
 interface RawResource {
   type?: string;
@@ -188,8 +195,11 @@ export class YandexDiskClient {
     const shown = redactUrl(url);
     const started = Date.now();
     let response: Response;
+    // The caller gave up (sync paused, app closing): nothing is sent, nothing is repeated.
+    init?.signal?.throwIfAborted();
     try {
       await this.throttle();
+      init?.signal?.throwIfAborted();
       // The timer covers the whole exchange, body included: a connection that goes quiet must
       // fail instead of freezing a sync run.
       const signal = AbortSignal.timeout(this.options.requestTimeout);
@@ -198,6 +208,10 @@ export class YandexDiskClient {
         signal: init?.signal ? AbortSignal.any([init.signal, signal]) : signal,
       });
     } catch (err) {
+      if (init?.signal?.aborted) {
+        logger.debug('api', `${method} ${shown} — cancelled`);
+        throw err;
+      }
       const timedOut =
         err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
       const failure = timedOut
@@ -282,8 +296,8 @@ export class YandexDiskClient {
    * Run a mutating call. A 202 answer means "accepted" — wait for the
    * operation to finish so callers can refresh the view afterwards.
    */
-  private async mutate(url: string, method: string): Promise<void> {
-    const { status, body } = await this.send(url, { method, headers: this.authHeaders() });
+  private async mutate(url: string, method: string, signal?: AbortSignal): Promise<void> {
+    const { status, body } = await this.send(url, { method, headers: this.authHeaders(), signal });
     if (status === 202 && typeof body.href === 'string') {
       // Only an operation status link is polled. Another link on our own origin is not a
       // status page; a foreign one is refused by pollAsyncOp.
@@ -291,12 +305,12 @@ export class YandexDiskClient {
         logger.warn('api', `202 with a link that is not an operation: ${redactUrl(body.href)}`);
         return;
       }
-      await this.pollAsyncOp(body.href);
+      await this.pollAsyncOp(body.href, signal);
     }
   }
 
   /** Poll an operation link until it succeeds, fails or times out. */
-  async pollAsyncOp(href: string): Promise<void> {
+  async pollAsyncOp(href: string, signal?: AbortSignal): Promise<void> {
     // The link comes from a response body. The token is attached to every poll, so it must
     // never leave the API origin (https + exact host, no look-alikes).
     if (!isOperationUrl(href)) {
@@ -307,10 +321,11 @@ export class YandexDiskClient {
     }
     const start = Date.now();
     while (Date.now() - start < this.options.pollTimeout) {
-      const { body } = await this.send(href, { headers: this.authHeaders() });
+      const { body } = await this.send(href, { headers: this.authHeaders(), signal });
       logger.debug('api', `operation ${redactUrl(href)} → ${String(body.status)}`);
       if (body.status === 'success') return;
       if (body.status === 'failed') throw new Error('Operation failed');
+      signal?.throwIfAborted();
       await new Promise(r => setTimeout(r, this.options.pollInterval));
     }
     throw new Error('Async operation timed out');
@@ -319,13 +334,13 @@ export class YandexDiskClient {
   // ── Disk info ────────────────────────────────────────────────
 
   /** GET /v1/disk/ — disk info & quota */
-  async getDiskInfo(): Promise<{
+  async getDiskInfo(signal?: AbortSignal): Promise<{
     type: 'disk';
     total_space: number;
     used_space: number;
     trash_size: number;
   }> {
-    return this.request(`${this.baseUrl}/`, { headers: this.authHeaders() });
+    return this.request(`${this.baseUrl}/`, { headers: this.authHeaders(), signal });
   }
 
   // ── Listing ──────────────────────────────────────────────────
@@ -333,14 +348,17 @@ export class YandexDiskClient {
   /** Fetch every page of a folder listing from `resources` or `trash/resources`. */
   private async listAll(
     endpoint: 'resources' | 'trash/resources',
-    path: string
+    path: string,
+    signal?: AbortSignal,
+    fields?: string
   ): Promise<FileInfoList> {
     const items: FileMetadata[] = [];
     let total = Infinity;
+    const only = fields ? `&fields=${encodeURIComponent(fields)}` : '';
     while (items.length < total) {
       const res = await this.request<RawResource>(
-        `${this.baseUrl}/${endpoint}?path=${encodeURIComponent(path)}&limit=${PAGE_SIZE}&offset=${items.length}`,
-        { headers: this.authHeaders() }
+        `${this.baseUrl}/${endpoint}?path=${encodeURIComponent(path)}&limit=${PAGE_SIZE}&offset=${items.length}${only}`,
+        { headers: this.authHeaders(), signal }
       );
       const page = res._embedded?.items ?? [];
       total = res._embedded?.total ?? page.length;
@@ -351,20 +369,55 @@ export class YandexDiskClient {
   }
 
   /** GET /v1/disk/resources?path= — all entries of a folder. */
-  async listFiles(path: string): Promise<FileInfoList> {
-    return this.listAll('resources', path);
+  async listFiles(path: string, signal?: AbortSignal): Promise<FileInfoList> {
+    return this.listAll('resources', path, signal);
   }
 
-  /** GET /v1/disk/trash/resources?path=/ — everything in the trash. */
-  async getTrashResources(): Promise<FileInfoList> {
-    return this.listAll('trash/resources', '/');
+  /**
+   * GET /v1/disk/resources?path=&fields= — a folder as the sync engine needs it: names, paths,
+   * sizes, timestamps and checksums only, which keeps big folders' answers small.
+   */
+  async listFolder(path: string, signal?: AbortSignal): Promise<FileInfoList> {
+    return this.listAll('resources', path, signal, FOLDER_FIELDS);
+  }
+
+  /**
+   * GET /v1/disk/resources/files — every file on the Disk in one flat list, whatever the folder
+   * (https://yandex.com/dev/disk-api/doc/en/reference/all-files). The answer carries no `total`, so
+   * pages are read until an empty one.
+   */
+  async listAllFiles(signal?: AbortSignal): Promise<FileMetadata[]> {
+    const items: FileMetadata[] = [];
+    let firstOfLastPage: string | undefined;
+    for (;;) {
+      const res = await this.request<{ items?: RawResource[] }>(
+        `${this.baseUrl}/resources/files?limit=${FLAT_PAGE_SIZE}&offset=${items.length}&fields=${encodeURIComponent(FLAT_FIELDS)}`,
+        { headers: this.authHeaders(), signal }
+      );
+      const page = res.items ?? [];
+      if (page.length === 0) return items;
+      // A Disk that ignores the offset would answer with the same page for ever.
+      if (page[0]?.path !== undefined && page[0].path === firstOfLastPage) {
+        throw new Error('The Disk file list does not advance');
+      }
+      firstOfLastPage = page[0]?.path;
+      items.push(...page.map(toMetadata));
+    }
+  }
+
+  /**
+   * GET /v1/disk/trash/resources?path= — the trash root (default) or a folder inside it, given
+   * relative to the trash root (`/foo_1408546879/sub`).
+   */
+  async getTrashResources(path = '/', signal?: AbortSignal): Promise<FileInfoList> {
+    return this.listAll('trash/resources', path, signal);
   }
 
   /** GET /v1/disk/resources?path= — metadata of one resource (no listing). */
-  async getMeta(path: string): Promise<FileMetadata> {
+  async getMeta(path: string, signal?: AbortSignal): Promise<FileMetadata> {
     const raw = await this.request<RawResource>(
       `${this.baseUrl}/resources?path=${encodeURIComponent(path)}&limit=0`,
-      { headers: this.authHeaders() }
+      { headers: this.authHeaders(), signal }
     );
     return toMetadata(raw);
   }
@@ -372,27 +425,33 @@ export class YandexDiskClient {
   // ── Transfer links ───────────────────────────────────────────
 
   /** GET /v1/disk/resources/upload — get upload link */
-  async getUploadHref(path: string, overwrite = false): Promise<{ href: string; method: 'PUT' }> {
+  async getUploadHref(
+    path: string,
+    overwrite = false,
+    signal?: AbortSignal
+  ): Promise<{ href: string; method: 'PUT' }> {
     return this.request(
       `${this.baseUrl}/resources/upload?path=${encodeURIComponent(path)}&overwrite=${overwrite}`,
-      { headers: this.authHeaders() }
+      { headers: this.authHeaders(), signal }
     );
   }
 
   /** GET /v1/disk/resources/download — get download link */
-  async getDownloadHref(path: string): Promise<{ href: string }> {
+  async getDownloadHref(path: string, signal?: AbortSignal): Promise<{ href: string }> {
     return this.request(`${this.baseUrl}/resources/download?path=${encodeURIComponent(path)}`, {
       headers: this.authHeaders(),
+      signal,
     });
   }
 
   // ── Mutations ────────────────────────────────────────────────
 
   /** DELETE /v1/disk/resources — to trash, or permanently */
-  async deleteFile(path: string, permanently = false): Promise<void> {
+  async deleteFile(path: string, permanently = false, signal?: AbortSignal): Promise<void> {
     await this.mutate(
       `${this.baseUrl}/resources?path=${encodeURIComponent(path)}&permanently=${permanently}`,
-      'DELETE'
+      'DELETE',
+      signal
     );
   }
 
@@ -413,8 +472,8 @@ export class YandexDiskClient {
   }
 
   /** PUT /v1/disk/resources — create directory (parents are not created) */
-  async mkdir(path: string): Promise<void> {
-    await this.mutate(`${this.baseUrl}/resources?path=${encodeURIComponent(path)}`, 'PUT');
+  async mkdir(path: string, signal?: AbortSignal): Promise<void> {
+    await this.mutate(`${this.baseUrl}/resources?path=${encodeURIComponent(path)}`, 'PUT', signal);
   }
 
   /** PUT /v1/disk/resources/publish, then read back the public URL. */
@@ -432,10 +491,14 @@ export class YandexDiskClient {
     );
   }
 
-  /** PUT /v1/disk/trash/resources/restore */
-  async restoreFromTrash(path: string): Promise<void> {
+  /**
+   * PUT /v1/disk/trash/resources/restore — to the old place, optionally under a new name (when
+   * the old name is taken the Disk refuses; `overwrite` is never sent, so nothing is replaced).
+   */
+  async restoreFromTrash(path: string, name?: string): Promise<void> {
+    const rename = name === undefined ? '' : `&name=${encodeURIComponent(name)}`;
     await this.mutate(
-      `${this.baseUrl}/trash/resources/restore?path=${encodeURIComponent(path)}`,
+      `${this.baseUrl}/trash/resources/restore?path=${encodeURIComponent(path)}${rename}`,
       'PUT'
     );
   }

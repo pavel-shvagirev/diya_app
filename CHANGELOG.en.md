@@ -28,13 +28,26 @@ versions: [SemVer](https://semver.org/).
   (AppImage, deb, rpm)
   through GitHub Actions; CI with lint, typecheck, tests with coverage, CodeQL, dependency audit.
 - README: launch-at-login instructions for macOS, Windows and Linux.
+- Trash: folders inside it can be opened (path bar, Up, Enter and double-click), and an item can
+  be restored under a new name ("Restore as…"), for when the old name is taken.
+- Sync of the whole Disk reads the flat list of all files (`/v1/disk/resources/files`, one
+  request per 1000 files, only the fields it needs) instead of listing every folder; the folder
+  tree is read in full on the first run, on "Sync now", every 30 minutes, and if the Disk refuses
+  the flat list. A file missing from that list is deleted locally only after the Disk confirms it
+  is gone.
+- Free space is checked before an upload of 64 MB or more: a file that cannot fit fails at once
+  with the numbers instead of after a long transfer.
 
 ### Changed
 
 - Sync runs are kept at least 5 s apart, except "Sync now", which starts at once (a run longer than the 60 s timer was followed by the
   next at once), and a file the Disk answers with 5xx or 429 is retried after 1 min, 2, 4 … up to
   30 min instead of on every run.
-- Unticking sync stops a run in flight (between folders and between files) instead of letting it finish; "Sync now" during a run no longer queues a second full scan behind it.
+- Unticking sync, and quitting, cancel the run in flight: requests and transfers get an abort
+  signal and stop at once (a half-downloaded file is removed) instead of letting the run finish;
+  "Sync now" during a run no longer queues a second full scan behind it.
+- Folder listings for the sync engine ask the Disk only for the fields it reads.
+- A full Disk (507) is no longer held back like a server fault: the next run tries again.
 - Electron 45; better-sqlite3 13; electron-builder 26.
 - Creating public links is disabled (existing links can be revoked).
 - API client: a timeout on every request; reads are retried after network failures, writes are
@@ -51,6 +64,8 @@ versions: [SemVer](https://semver.org/).
   permission requests are denied.
 - Sync folder: the whole disk, the home folder, system folders and the app's data folder are
   refused; symbolic links are not followed on upload or in sync; transfer links must be https.
+- "Show in folder" accepts only paths inside the sync folder or the app data folder (it took any
+  absolute path from the page); the new name of a restored trash item is validated like any name.
 - Linux: tokens are not stored when only the plain-text keyring fallback is available.
 - Packaged builds: Electron fuses (no `ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS`, `--inspect`;
   asar-only with integrity check); macOS builds are ad-hoc signed; workflows do not keep the

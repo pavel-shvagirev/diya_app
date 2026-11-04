@@ -116,4 +116,21 @@ export async function openEntry(entry: Entry): Promise<void> {
   else await browser().downloadEntries([entry.path]);
 }
 
+/** Double-click / Enter in the trash: a folder opens (a file cannot be opened there). */
+export async function openTrashEntry(entry: Entry): Promise<void> {
+  if (isDir(entry)) await browser().openTrash({ path: entry.path });
+}
+
+/** Put one item back from the trash under a name the user types (the old one may be taken). */
+export async function restoreEntryAs(entry: Entry): Promise<void> {
+  const name = await dialogs.prompt({
+    title: t.restoreAs,
+    label: t.newName,
+    initial: entry.name,
+    submit: t.restore,
+    validate: problemText,
+  });
+  if (name) await browser().restoreEntries([entry.path], name.trim());
+}
+
 export const displayName = (path: string): string => baseName(path) || t.disk;

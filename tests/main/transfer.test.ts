@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { YandexApiError, errorStatus } from '../../src/main/api-error.js';
 import {
+  FREE_SPACE_CHECK_BYTES,
   MAX_UPLOAD_BYTES,
   downloadFile,
   transferTuning,
@@ -339,5 +340,184 @@ describe('upload: retries, answers and limits', () => {
     };
     await expect(uploadFile(c as never, file, '/f.txt', false)).rejects.toThrow('503: busy');
     expect(c.getUploadHref).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('cancelling a transfer', () => {
+  let dir: string;
+  const realFetch = global.fetch;
+  const tuningAtStart = { ...transferTuning };
+  const hangUntilAborted = (): void => {
+    global.fetch = vi.fn(
+      (_u: unknown, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+        })
+    ) as never;
+  };
+  const links = () => ({
+    getUploadHref: vi.fn().mockResolvedValue({ href: 'https://uploader.test/put', method: 'PUT' }),
+    getDownloadHref: vi.fn().mockResolvedValue({ href: 'https://downloader.test/get' }),
+  });
+
+  beforeEach(() => {
+    transferTuning.retryDelayMs = 1;
+    dir = mkdtempSync(join(tmpdir(), 'transfer-abort-'));
+  });
+  afterEach(() => {
+    Object.assign(transferTuning, tuningAtStart);
+    global.fetch = realFetch;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('an upload stops when the signal fires and is not repeated', async () => {
+    const file = join(dir, 'u.txt');
+    writeFileSync(file, 'content');
+    hangUntilAborted();
+    const c = links();
+    const ctrl = new AbortController();
+    const pending = uploadFile(c as never, file, '/u.txt', false, undefined, ctrl.signal);
+    await vi.waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+    ctrl.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(c.getUploadHref).toHaveBeenCalledTimes(1);
+    expect(c.getUploadHref.mock.calls[0][2]).toBe(ctrl.signal);
+  });
+
+  it('an upload with a signal that is already aborted asks for no link', async () => {
+    const file = join(dir, 'u.txt');
+    writeFileSync(file, 'content');
+    const c = links();
+    const ctrl = new AbortController();
+    ctrl.abort();
+    await expect(
+      uploadFile(c as never, file, '/u.txt', false, undefined, ctrl.signal)
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(c.getUploadHref).not.toHaveBeenCalled();
+  });
+
+  it('a download stops when the signal fires and leaves neither .part nor target', async () => {
+    hangUntilAborted();
+    const target = join(dir, 'd.txt');
+    const ctrl = new AbortController();
+    const pending = downloadFile(
+      links() as never,
+      '/d.txt',
+      target,
+      undefined,
+      undefined,
+      undefined,
+      ctrl.signal
+    );
+    await vi.waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+    ctrl.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it('a download cut off in the middle of the body removes the partial file', async () => {
+    const ctrl = new AbortController();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('par'));
+        ctrl.signal.addEventListener('abort', () => controller.error(ctrl.signal.reason));
+      },
+    });
+    global.fetch = vi.fn(async () => new Response(body, { status: 200 })) as never;
+    const target = join(dir, 'm.txt');
+    const pending = downloadFile(
+      links() as never,
+      '/m.txt',
+      target,
+      undefined,
+      undefined,
+      undefined,
+      ctrl.signal
+    );
+    await new Promise(r => setTimeout(r, 50));
+    ctrl.abort();
+    await expect(pending).rejects.toBeDefined();
+    expect(readdirSync(dir)).toEqual([]);
+  });
+});
+
+describe('free space before a big upload', () => {
+  let dir: string;
+  let file: string;
+  const realFetch = global.fetch;
+  const MIB = 1024 ** 2;
+  const disk = (total: number, used: number) => ({
+    getDiskInfo: vi.fn().mockResolvedValue({ total_space: total, used_space: used, trash_size: 0 }),
+    getUploadHref: vi.fn().mockResolvedValue({ href: 'https://uploader.test/put', method: 'PUT' }),
+    getDownloadHref: vi.fn(),
+  });
+  const accept = (): void => {
+    global.fetch = vi.fn(async (_u: unknown, init: RequestInit) => {
+      for await (const _ of init.body as AsyncIterable<Buffer>) void _;
+      return { ok: true, status: 201 } as Response;
+    }) as never;
+  };
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'upload-space-'));
+    file = join(dir, 'big.bin');
+    writeFileSync(file, '');
+    truncateSync(file, FREE_SPACE_CHECK_BYTES); // sparse: takes no disk space
+  });
+  afterEach(() => {
+    global.fetch = realFetch;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('refuses a file that does not fit, before asking for an upload link', async () => {
+    const c = disk(1000 * MIB, 1000 * MIB - 10 * MIB);
+    const err = await uploadFile(c as never, file, '/big.bin', false).catch((e: unknown) => e);
+    expect(errorStatus(err)).toBe(507);
+    expect((err as Error).message).toMatch(/not enough free space/);
+    expect(c.getUploadHref).not.toHaveBeenCalled();
+  });
+
+  it('uploads when the file fits', async () => {
+    accept();
+    const c = disk(1000 * MIB, 0);
+    await expect(uploadFile(c as never, file, '/big.bin', false)).resolves.toBe('created');
+    expect(c.getDiskInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not ask for the quota when a small file is uploaded', async () => {
+    accept();
+    const small = join(dir, 'small.txt');
+    writeFileSync(small, 'x');
+    const c = disk(1, 1);
+    await uploadFile(c as never, small, '/small.txt', false);
+    expect(c.getDiskInfo).not.toHaveBeenCalled();
+  });
+
+  it('does not block an overwrite: the old copy is freed, its size is not known here', async () => {
+    accept();
+    const c = disk(1000 * MIB, 1000 * MIB);
+    await expect(uploadFile(c as never, file, '/big.bin', true)).resolves.toBe('created');
+    expect(c.getDiskInfo).not.toHaveBeenCalled();
+  });
+
+  it('goes on when the quota cannot be read: the Disk decides (507)', async () => {
+    accept();
+    const c = disk(0, 0);
+    c.getDiskInfo.mockRejectedValue(new Error('503: down'));
+    await expect(uploadFile(c as never, file, '/big.bin', false)).resolves.toBe('created');
+  });
+
+  it('a cancelled quota check cancels the upload', async () => {
+    const c = disk(0, 0);
+    const ctrl = new AbortController();
+    c.getDiskInfo.mockImplementation(async () => {
+      ctrl.abort();
+      throw ctrl.signal.reason;
+    });
+    await expect(
+      uploadFile(c as never, file, '/big.bin', false, undefined, ctrl.signal)
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(c.getUploadHref).not.toHaveBeenCalled();
   });
 });

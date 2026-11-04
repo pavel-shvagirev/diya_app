@@ -10,6 +10,7 @@ import {
   DISK,
   DOWNLOAD_LINK,
   ERROR_OBJECT,
+  FILES_RESOURCE_LIST,
   OPERATION_FAILED,
   OPERATION_IN_PROGRESS,
   OPERATION_LINK_PATH,
@@ -192,5 +193,24 @@ describe('Error', () => {
       .catch(e => e);
     expect(err.status).toBe(404);
     expect(err.errorId).toBeUndefined();
+  });
+});
+
+describe('FilesResourceList (the flat list of all files)', () => {
+  it('is read as documented: items with paths, sizes, timestamps and md5, then an empty page ends it', async () => {
+    mockFetch
+      .mockResolvedValueOnce(reply(200, FILES_RESOURCE_LIST))
+      .mockResolvedValueOnce(reply(200, { items: [], limit: 1000, offset: 2 }));
+    const files = await client().listAllFiles();
+    expect(files).toHaveLength(2);
+    expect(files[0]).toMatchObject({
+      type: 'file',
+      name: 'photo2.png',
+      path: '/foo/photo2.png', // `disk:/foo/photo2.png`
+      size: 54321,
+      modified: '2014-04-22T14:57:14+04:00',
+      md5: '53f4dc6379c8f95ddf11b9508cfea271',
+    });
+    expect(files[1]?.path).toBe('/foo/photo1.png');
   });
 });
