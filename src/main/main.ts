@@ -1,9 +1,20 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { app, clipboard, Menu, nativeImage, powerMonitor, shell } from 'electron';
+import {
+  app,
+  clipboard,
+  dialog,
+  Menu,
+  nativeImage,
+  powerMonitor,
+  shell,
+  type MessageBoxOptions,
+  type MessageBoxReturnValue,
+} from 'electron';
 
 import { EVENTS } from '../shared/channels.js';
 import { oauthHost } from '../shared/language.js';
+import { showAbout } from './about.js';
 import { resolveClientId, SettingsStore } from './app-config.js';
 import { appIconFile, applyDockIcon } from './app-icon.js';
 import { buildAppMenuTemplate } from './app-menu.js';
@@ -99,6 +110,18 @@ function createMainWindow(): BrowserWindow {
   return win;
 }
 
+function openAbout(): void {
+  const win = windows.get();
+  const showMessageBox = (o: MessageBoxOptions): Promise<MessageBoxReturnValue> =>
+    win ? dialog.showMessageBox(win, o) : dialog.showMessageBox(o);
+  void showAbout({
+    strings: menuStrings(),
+    version: app.getVersion(),
+    showMessageBox,
+    openExternal: url => shell.openExternal(url),
+  });
+}
+
 function applyAppMenu(): void {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate(
@@ -108,6 +131,7 @@ function applyAppMenu(): void {
         strings: menuStrings(),
         openSettings,
         openLog: openLogWindow,
+        openAbout,
         quit: quitNow,
         quitKey: () => app.quit(),
       })

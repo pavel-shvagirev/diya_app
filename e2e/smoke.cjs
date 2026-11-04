@@ -30,6 +30,9 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  ${detail}`}`);
 };
 
+// CI on Linux has no SUID sandbox helper; the switch is for the test run only.
+if (process.env.E2E_NO_SANDBOX) app.commandLine.appendSwitch('no-sandbox');
+
 app.requestSingleInstanceLock = () => true; // a running copy of the app must not block the test
 
 let mainWindowSeen = false;

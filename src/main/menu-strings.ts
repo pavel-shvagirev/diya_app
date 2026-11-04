@@ -40,6 +40,13 @@ const ru = {
   zoom: 'Увеличить',
   front: 'Все окна на передний план',
   close: 'Закрыть окно',
+  about: 'О программе Diya',
+  help: 'Справка',
+  ok: 'OK',
+  aboutVersion: (v: string) => `Версия ${v}`,
+  aboutAuthors: 'Diya contributors · лицензия MIT',
+  aboutNotAffiliated: 'Неофициальный клиент Яндекс Диска. Не связан с Яндексом и не одобрен им.',
+  aboutOpenRepo: 'Открыть репозиторий',
 };
 
 const en: typeof ru = {
@@ -76,6 +83,13 @@ const en: typeof ru = {
   zoom: 'Zoom',
   front: 'Bring all to front',
   close: 'Close window',
+  about: 'About Diya',
+  help: 'Help',
+  ok: 'OK',
+  aboutVersion: (v: string) => `Version ${v}`,
+  aboutAuthors: 'Diya contributors · MIT license',
+  aboutNotAffiliated: 'Unofficial Yandex Disk client. Not affiliated with or endorsed by Yandex.',
+  aboutOpenRepo: 'Open repository',
 };
 
 export type MenuStrings = typeof ru;

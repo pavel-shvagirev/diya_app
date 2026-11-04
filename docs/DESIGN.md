@@ -50,8 +50,9 @@ framework, no JS theming engine.
 - **Settings** (modal): sync folders, on/off, sync now, status; appearance (theme, language);
   account.
 - **Hints:** every action button has a `title`; a disabled one says what is missing.
-- **Native menus:** only items that do something. App menu = Settings, Log, Edit, View
-  (Reload / DevTools only in development), Window, Quit ("Завершить" in Russian). Tray = Open,
+- **Native menus:** only items that do something. App menu = About, Settings, Log, Edit,
+  View (Reload / DevTools only in development), Window, Help (About; on macOS About is the first
+  item of the app menu), Quit ("Завершить" in Russian). Tray = Open,
   Pause/Resume sync (or "Set up sync…"), Settings, Quit. Labels follow the interface language
   (Settings → Language, else the OS).
 - **Closing vs quitting:** Cmd/Ctrl+W closes a window and the app stays in the tray; Cmd/Ctrl+Q

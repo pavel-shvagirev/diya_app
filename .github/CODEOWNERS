@@ -1,0 +1,9 @@
+# Review is requested automatically for the places where a mistake costs the most.
+*                              @pavel-shvagirev
+/src/main/sync-engine.ts       @pavel-shvagirev
+/src/main/transfer.ts          @pavel-shvagirev
+/src/main/token-store.ts       @pavel-shvagirev
+/src/main/security.ts          @pavel-shvagirev
+/src/shared/validation.ts      @pavel-shvagirev
+/src/shared/features.ts        @pavel-shvagirev
+/.github/                      @pavel-shvagirev

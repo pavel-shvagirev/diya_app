@@ -1,0 +1,20 @@
+name: Feature request / Предложение
+description: An idea for Diya / Идея для Diya
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you want to do / Что вы хотите сделать
+      description: The problem, not only the solution / Задача, а не только решение
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do today instead / Что делаете сейчас
+  - type: textarea
+    id: api
+    attributes:
+      label: Yandex Disk API method that would help / Метод API Диска, который помог бы
+      description: A link, if you know it / Ссылка, если знаете

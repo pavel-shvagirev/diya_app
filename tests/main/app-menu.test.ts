@@ -12,6 +12,7 @@ const build = (o: { isMac?: boolean; isDev?: boolean } = {}, openSettings = vi.f
     strings,
     openSettings,
     openLog: vi.fn(),
+    openAbout: vi.fn(),
     quit: vi.fn(),
     quitKey: vi.fn(),
     ...o,
@@ -40,6 +41,7 @@ describe('application menu', () => {
         strings,
         openSettings: vi.fn(),
         openLog,
+        openAbout: vi.fn(),
         quit: vi.fn(),
         quitKey: vi.fn(),
       })
@@ -47,6 +49,29 @@ describe('application menu', () => {
     (item.click as () => void)();
     expect(openLog).toHaveBeenCalled();
     expect(item.accelerator).toBe('CmdOrCtrl+Shift+L');
+  });
+
+  it('has an About item on every platform that opens the About dialog', () => {
+    for (const isMac of [true, false]) {
+      const openAbout = vi.fn();
+      const template = buildAppMenuTemplate({
+        isMac,
+        isDev: false,
+        strings,
+        openSettings: vi.fn(),
+        openLog: vi.fn(),
+        openAbout,
+        quit: vi.fn(),
+        quitKey: vi.fn(),
+      });
+      const item = flat(template).find(i => i.label === strings.about)!;
+      expect(item).toBeDefined();
+      (item.click as () => void)();
+      expect(openAbout).toHaveBeenCalledTimes(1);
+      // on Windows and Linux it sits in a Help menu, on macOS at the top of the app menu
+      if (isMac) expect((template[0]!.submenu as MenuItemConstructorOptions[])[0]).toBe(item);
+      else expect(template.at(-1)!.label).toBe(strings.help);
+    }
   });
 
   it('keeps Edit so Cut / Copy / Paste work in text fields', () => {

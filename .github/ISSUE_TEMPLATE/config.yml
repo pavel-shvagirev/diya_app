@@ -1,0 +1,7 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem / Уязвимость
+    url: https://github.com/pavel-shvagirev/diya_app/security/advisories/new
+    about: >-
+      Report it privately, not as a public issue (see SECURITY.en.md). /
+      Сообщите приватно, не публично (см. SECURITY.md).

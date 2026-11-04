@@ -1,0 +1,54 @@
+name: Bug report / Ошибка
+description: Something does not work / Что-то не работает
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do **not** report security problems here, see [SECURITY.en.md](../blob/main/SECURITY.en.md).
+        Уязвимости сюда не пишите, см. [SECURITY.md](../blob/main/SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, what you expected / Что произошло и что ожидали
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / Шаги воспроизведения
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Diya version / Версия Diya
+      description: Menu → About / Меню → О программе
+      placeholder: '0.2.1'
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: System / Система
+      options: [macOS, Windows, Linux]
+    validations:
+      required: true
+  - type: input
+    id: osversion
+    attributes:
+      label: System version / Версия системы
+  - type: textarea
+    id: log
+    attributes:
+      label: Log / Журнал
+      description: |
+        Log window (Ctrl/Cmd+Shift+L), only the relevant lines. Tokens and signed links are
+        redacted, but file names and paths are not: look before you paste.
+        **Do not attach a log recorded at `trace` level**: it holds full Disk answers with the
+        names and paths of your files.
+        Журнал (Ctrl/Cmd+Shift+L), только нужные строки. Токены и подписанные ссылки скрыты,
+        имена и пути файлов нет: просмотрите перед отправкой.
+        **Не прикладывайте журнал уровня `trace`**: в нём полные ответы Диска с именами и
+        путями ваших файлов.
+      render: text

@@ -7,7 +7,7 @@
 ```sh
 npm ci
 npm start            # build + run the app
-npm run check        # lint + typecheck + format check + tests with coverage
+npm run check        # lint (code, Markdown, YAML) + typecheck + format + tests
 npm run e2e          # the real app against an in-memory Disk (needs a display)
 ```
 
@@ -17,6 +17,8 @@ if a native-module error appears after switching, run `npm run native:rebuild:no
 
 ## Rules
 
+- Prose in Markdown and YAML stays within 100 columns (`npm run lint:md`, `npm run lint:yaml`);
+  tables and code blocks are exempt.
 - Small, focused pull requests; one logical change per commit (`feat:`, `fix:`, `docs:`, …).
 - Behaviour changes come with a test; a bug fix starts with a failing test that reproduces it.
 - Do not mock a response shape you invented: take it from the official Yandex Disk docs
@@ -29,7 +31,8 @@ if a native-module error appears after switching, run `npm run native:rebuild:no
   document pair in step (`X.md` is Russian, `X.en.md` English: README, CHANGELOG, ARCHITECTURE,
   RELEASING, SIGN_IN).
 - Never commit tokens, client secrets, personal paths or account data; fixtures use fake values.
+- Be respectful: [CODE_OF_CONDUCT.en.md](CODE_OF_CONDUCT.en.md).
 - Working with an AI assistant: [AGENTS.md](AGENTS.md) is the briefing it follows.
-- Forks: register your own Yandex OAuth application ([docs/SIGN_IN.en.md](docs/SIGN_IN.en.md)), keep the
-  "not affiliated with Yandex" notices, and give the build its own name and icon; the Yandex Disk
-  name and logo are not reusable (`assets/brand/NOTICE.md`).
+- Forks: register your own Yandex OAuth application ([docs/SIGN_IN.en.md](docs/SIGN_IN.en.md)), keep
+  the "not affiliated with Yandex" notices, and give the build its own name and icon; the Yandex
+  Disk name and logo are not reusable (`assets/brand/NOTICE.md`).

@@ -30,7 +30,7 @@ touching UI.
 ```sh
 npm ci
 npm start                 # build + run (rebuilds better-sqlite3 for Electron)
-npm run check             # THE gate: lint + typecheck + prettier check + tests with coverage
+npm run check             # THE gate: lint (code, md, yaml) + types + prettier + tests
 npm test                  # vitest (pretest rebuilds better-sqlite3 for Node)
 npm run e2e               # real app vs fake Disk; needs a display; E2E_SHOTS=dir saves screenshots
 npm run dist              # installers for this OS into release/
@@ -77,9 +77,10 @@ relevant test, `npm run e2e` for UI/lifecycle changes).
 
 ## Documentation
 
-Russian/English pairs, kept in step: `README`, `CHANGELOG`, `CONTRIBUTING`, `SECURITY`, `docs/ARCHITECTURE`,
-`docs/RELEASING`, `docs/SIGN_IN`. The Russian file has the plain name (`README.md`, shown first on
-GitHub), the English one the `.en.md` suffix. English only: `docs/DESIGN.md`, this file.
+Russian/English pairs, kept in step: `README`, `CHANGELOG`, `CONTRIBUTING`, `SECURITY`,
+`CODE_OF_CONDUCT`, `docs/ARCHITECTURE`, `docs/RELEASING`, `docs/SIGN_IN`. The Russian file has the
+plain name (`README.md`, shown first on GitHub), the English one the `.en.md` suffix. English only:
+`docs/DESIGN.md`, this file.
 
 - Open work and quality plans: `plans/` (git-ignored, local to a checkout, may be absent;
   `plans/TODO.en.md` has priorities P1–P3). User-visible changes: `CHANGELOG.en.md`. Do not add

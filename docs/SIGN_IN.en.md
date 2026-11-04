@@ -12,7 +12,8 @@ Official guides: [register an app](https://yandex.com/dev/id/doc/en/register-api
 
 1. Open <https://oauth.yandex.com/client/new/> (<https://oauth.yandex.ru/client/new/> in the Russian
    interface) and sign in with the account whose Disk you want to use.
-2. Type: **For API access or debugging**. Name and contact e-mail: yours (the name is only shown to you).
+2. Type: **For API access or debugging**. Name and contact e-mail: yours (the name is only shown to
+   you).
 3. Permissions (Yandex Disk REST API): `cloud_api:disk.read`, `cloud_api:disk.write`,
    `cloud_api:disk.info`. (`cloud_api:disk.app_folder` is not needed.)
 4. Create the app. Yandex shows two values: the **ID** (`ClientID`) and the **password**
@@ -23,9 +24,9 @@ The sign-in screen has an **Open app creation** button and the same steps.
 
 ## 2. Sign in
 
-Paste the ID and the secret into **Client ID** and **Client secret** and press **Save**. The secret is
-stored encrypted with the OS keystore in `client-secret.bin` (without a keystore it is kept for the
-session only), is never shown again and is sent only to Yandex. Then either:
+Paste the ID and the secret into **Client ID** and **Client secret** and press **Save**. The secret
+is stored encrypted with the OS keystore in `client-secret.bin` (without a keystore it is kept for
+the session only), is never shown again and is sent only to Yandex. Then either:
 
 - **Sign in with Yandex** — the app shows a code (and copies it), opens the Yandex page
   "Device authorization"; paste the code there and allow access. This is Yandex's _device flow_
@@ -50,4 +51,5 @@ after it expires the app asks to sign in again.
 ## For developers
 
 `YADISK_CLIENT_ID=<id> npm start` supplies the ID without typing it; `YADISK_CLIENT_SECRET` does the
-same for the secret. What you type on the screen wins over the variables. Release builds contain no ID; see [RELEASING.en.md](RELEASING.en.md).
+same for the secret. What you type on the screen wins over the variables. Release builds contain no
+ID; see [RELEASING.en.md](RELEASING.en.md).

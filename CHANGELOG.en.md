@@ -7,6 +7,9 @@ versions: [SemVer](https://semver.org/).
 
 ### Added
 
+- Linting of Markdown (`markdownlint-cli2`) and YAML (`scripts/lint-yaml.mjs`) in `npm run check`,
+  the pre-commit hook and CI; prose lines are limited to 100 columns.
+- Menu "About Diya": version, repository link, the "not affiliated" notice.
 - Releases carry `SHA256SUMS.txt` and a signed build attestation (`gh attestation verify`).
 
 ## [0.2.1] - 2026-11-04

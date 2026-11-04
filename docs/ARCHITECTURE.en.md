@@ -21,24 +21,27 @@ Electron app, three processes of code:
 - **`network.ts`** — makes every `fetch` of the main process go through undici 8 (HTTP/1.1), because
   the client bundled with Electron 45 can crash the process while a download is being written
   (nodejs/undici#5360). Called first in `main.ts`.
-- **`oauth.ts`, `auth-service.ts`, `app-config.ts`, `token-store.ts`** — sign-in by the Yandex
-  OAuth _device flow_ (code shown in the app, confirmed in a browser; no redirect URI; the user's own application ID
-  and secret), token refresh, Client ID resolution (typed → `YADISK_CLIENT_ID`;
+- **`oauth.ts`, `auth-service.ts`, `app-config.ts`, `token-store.ts`** — sign-in by the Yandex OAuth
+  _device flow_ (code shown in the app, confirmed in a browser; no redirect URI; the user's own
+  application ID and secret), token refresh, Client ID resolution (typed → `YADISK_CLIENT_ID`;
   builds carry no ID), encrypted session file.
-- **`language.ts`** — the interface language (system / ru / en, kept in `settings.json`): native menus
-  read it, pages get it as `?lang=` when loaded, so a change reloads the windows. Strings live in
-  `src/renderer/lib/strings.ts` (pages) and `menu-strings.ts` (menus, tray).
+- **`language.ts`** — the interface language (system / ru / en, kept in `settings.json`): native
+  menus read it, pages get it as `?lang=` when loaded, so a change reloads the windows. Strings live
+  in `src/renderer/lib/strings.ts` (pages) and `menu-strings.ts` (menus, tray).
 - **`transfer.ts`** — streaming upload/download with byte progress; downloads go to `*.part`
   and are renamed on success.
 - **`sync-engine.ts`, `sync-db.ts`, `fs-watcher.ts`, `remote-storage.ts`, `sync-control.ts`** —
   see below.
 - **`ipc-handlers.ts`** — every `window.api` call; validates paths and arguments ("show in
   folder" only for the sync folder and the app data folder).
-- **`logger.ts`, `log-window.ts`** — ring buffer (5000 entries) + file (over 5 MB it moves to `diya.log.1`, at start and while running), redaction, the log window. The recording level is `debug` by default and is not stored in settings; turning on `trace` writes a warning into the log and the window shows a red banner.
-- **Windows and menus:** `window-holder.ts` (re-creates the main window on demand),
-  `quit-guard.ts` + `hint-window.ts` (double Cmd/Ctrl+Q), `tray.ts`, `app-menu.ts`,
-  `quit-key.ts` (the guarded Cmd/Ctrl+Q inside windows), `app-icon.ts` (window and Dock icon),
-  `menu-strings.ts`, `security.ts` (navigation guard, CSP, `safeStorage` wrapper).
+- **`logger.ts`, `log-window.ts`** — ring buffer (5000 entries) + file (over 5 MB it moves to
+  `diya.log.1`, at start and while running), redaction, the log window. The recording level is
+  `debug` by default and is not stored in settings; turning on `trace` writes a warning into the log
+  and the window shows a red banner.
+- **Windows and menus:** `window-holder.ts` (re-creates the main window on demand), `quit-guard.ts`
+  - `hint-window.ts` (double Cmd/Ctrl+Q), `tray.ts`, `app-menu.ts`, `about.ts` (About dialog),
+    `quit-key.ts` (the guarded Cmd/Ctrl+Q inside windows), `app-icon.ts` (window and Dock icon),
+    `menu-strings.ts`, `security.ts` (navigation guard, CSP, `safeStorage` wrapper).
 
 ## Sync
 
@@ -52,31 +55,31 @@ One pair (local folder ⇄ Disk folder). Every run (60 s timer, local file event
 3. Execute: folders first, then files, deletions last. After an upload the Disk size is checked;
    a damaged copy is removed and reported.
 
-Runs are kept at least 5 s apart ("sync now" is exempt and starts at once), and a timer tick during a run queues nothing. A file the Disk
-answers with 5xx or 429 is not requested again for 1 min, then 2, 4 … up to 30 min (still reported
-as failed meanwhile).
-A pause (`stop()`) cancels the run in flight: every request and transfer of a run carries one
-`AbortSignal` (`RemoteStorage` takes it as the last argument), so a listing or a transfer stops
-at once, a half-downloaded `*.part` is removed, and the run ends as paused: not recorded as
-finished, not an error. Pausing during the 5 s gap cancels the run waiting there, and quitting
-the app pauses too. A "sync now" click during a run queues no repeat.
+Runs are kept at least 5 s apart ("sync now" is exempt and starts at once), and a timer tick during
+a run queues nothing. A file the Disk answers with 5xx or 429 is not requested again for 1 min, then
+2, 4 … up to 30 min (still reported as failed meanwhile). A pause (`stop()`) cancels the run in
+flight: every request and transfer of a run carries one `AbortSignal` (`RemoteStorage` takes it as
+the last argument), so a listing or a transfer stops at once, a half-downloaded `*.part` is removed,
+and the run ends as paused: not recorded as finished, not an error. Pausing during the 5 s gap
+cancels the run waiting there, and quitting the app pauses too. A "sync now" click during a run
+queues no repeat.
 
-**Reading the Disk.** The API has no change feed, and a folder listing costs one request per
-folder. When the sync root is `/` (the whole Disk) and the remote supports it
-(`RemoteStorage.listAllFiles`, `GET /v1/disk/resources/files`), only the first run, "sync now",
-a run after 30 minutes (`fullScanMs`) and a run after the Disk refused the flat list (HTTP 400,
-remembered for the session) walk the folders; the others read the flat list: one request per
-1000 files, only the fields the engine uses (`fields`). The flat list has no folders, so they
-come from the paths of the files; empty ones are remembered from the last full scan, but only as a
-guess: a flat run never creates a folder because of it. Each such folder is asked for by itself
-(`stat`, at most 25 per run, one request each): a 404 means it was deleted on the Disk, and a
-folder deleted locally is deleted on the Disk (it holds no file, or the flat list would show it).
-An empty folder created on the Disk in between is seen at the next full scan. Changes made through the file
-manager (delete, copy, move, new folder, upload, restore from the trash) call
-`SyncEngine.invalidateRemote()`, so the next run reads the whole tree. The list is read page by page while the Disk
-changes, so a file can slip through: a file that is only _missing_ from a flat list is deleted
-locally only after a `stat` answers 404. Any other failure of the flat list ends the run.
-A sync folder other than `/` always walks its folders.
+**Reading the Disk.** The API has no change feed, and a folder listing costs one request per folder.
+When the sync root is `/` (the whole Disk) and the remote supports it (`RemoteStorage.listAllFiles`,
+`GET /v1/disk/resources/files`), only the first run, "sync now", a run after 30 minutes
+(`fullScanMs`) and a run after the Disk refused the flat list (HTTP 400, remembered for the session)
+walk the folders; the others read the flat list: one request per 1000 files, only the fields the
+engine uses (`fields`). The flat list has no folders, so they come from the paths of the files;
+empty ones are remembered from the last full scan, but only as a guess: a flat run never creates a
+folder because of it. Each such folder is asked for by itself (`stat`, at most 25 per run, one
+request each): a 404 means it was deleted on the Disk, and a folder deleted locally is deleted on
+the Disk (it holds no file, or the flat list would show it). An empty folder created on the Disk in
+between is seen at the next full scan. Changes made through the file manager (delete, copy, move,
+new folder, upload, restore from the trash) call `SyncEngine.invalidateRemote()`, so the next run
+reads the whole tree. The list is read page by page while the Disk changes, so a file can slip
+through: a file that is only _missing_ from a flat list is deleted locally only after a `stat`
+answers 404. Any other failure of the flat list ends the run. A sync folder other than `/` always
+walks its folders.
 
 **Folders.** A folder seen on both sides at a run is recorded in `sync_state`. A recorded folder
 that is missing on one side was deleted there, and the deletion is carried to the other side (the
@@ -148,12 +151,12 @@ host (`oauth.yandex.ru` / `.com`); HTTPS-only allow-listed external links; sessi
 the OS keystore; a function with a known problem is switched off in `src/shared/features.ts` and
 refused in the main process, not just hidden in the UI.
 
-Also: every IPC handler checks that the message comes from one of our own pages
-(`isTrustedSender`); all permission requests are denied; the sync folder is refused when it is the
-whole disk, the home folder, a system folder or overlaps the app data (`sync-folder.ts`);
-symbolic links are never followed (upload, sync scan); upload/download links must be https; without a real
-OS keyring (Linux `basic_text`) nothing is stored; packaged builds flip the Electron fuses
-(`runAsNode`, `NODE_OPTIONS`, `--inspect` off, asar-only, asar integrity).
+Also: every IPC handler checks that the message comes from one of our own pages (`isTrustedSender`);
+all permission requests are denied; the sync folder is refused when it is the whole disk, the home
+folder, a system folder or overlaps the app data (`sync-folder.ts`); symbolic links are never
+followed (upload, sync scan); upload/download links must be https; without a real OS keyring (Linux
+`basic_text`) nothing is stored; packaged builds flip the Electron fuses (`runAsNode`,
+`NODE_OPTIONS`, `--inspect` off, asar-only, asar integrity).
 
 ## Tests
 

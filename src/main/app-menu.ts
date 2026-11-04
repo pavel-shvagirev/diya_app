@@ -14,6 +14,8 @@ export interface AppMenuOptions {
   strings: MenuStrings;
   openSettings: () => void;
   openLog: () => void;
+  /** The "About" item: version and repository link. */
+  openAbout: () => void;
   /** The "Quit" item: leaves at once, no hint. */
   quit: () => void;
   /** Cmd/Ctrl+Q: the guarded quit (first press shows a hint). */
@@ -33,6 +35,8 @@ export function buildAppMenuTemplate(o: AppMenuOptions): MenuItemConstructorOpti
     accelerator: 'CmdOrCtrl+Shift+L',
     click: o.openLog,
   };
+
+  const about: MenuItemConstructorOptions = { label: s.about, click: o.openAbout };
 
   // The visible item quits immediately. The shortcut is a hidden twin, so Cmd/Ctrl+Q keeps
   // its "press again" guard even when no window has focus (the app lives in the tray).
@@ -73,6 +77,8 @@ export function buildAppMenuTemplate(o: AppMenuOptions): MenuItemConstructorOpti
       {
         label: s.appName,
         submenu: [
+          about,
+          { type: 'separator' },
           settings,
           log,
           { type: 'separator' },
@@ -112,5 +118,6 @@ export function buildAppMenuTemplate(o: AppMenuOptions): MenuItemConstructorOpti
         { role: 'close', label: s.close, accelerator: 'CmdOrCtrl+W' },
       ],
     },
+    { label: s.help, submenu: [about] },
   ];
 }

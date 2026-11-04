@@ -2,6 +2,8 @@
 
 [English](README.en.md) · [Русский](README.md)
 
+[![CI](https://github.com/pavel-shvagirev/diya_app/actions/workflows/ci.yml/badge.svg)](https://github.com/pavel-shvagirev/diya_app/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/pavel-shvagirev/diya_app?include_prereleases)](https://github.com/pavel-shvagirev/diya_app/releases)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
 ![Electron](https://img.shields.io/badge/Electron-45-47848F?logo=electron&logoColor=white)
@@ -34,12 +36,14 @@ Unofficial desktop client for [Yandex Disk](https://disk.yandex.com/): a compact
 - **Operations:** upload and download files and folders, new folder, rename, copy, move,
   delete to the Disk trash, restore (also under a new name; folders in the trash can be opened),
   delete forever, empty trash.
-- **Sync:** one pair "local folder ⇄ Disk folder", two-way, every 60 s and on local changes.
-  A file changed on both sides keeps both versions (`name (conflict copy YYYY-MM-DD HH-mm).ext`; "конфликтная копия" in the Russian interface). Deletions on
-  one side move the file or folder to the trash of the other side. A run that would delete a suspicious
-  share of the files is refused. Pause/resume from the tray.
+- **Sync:** one pair "local folder ⇄ Disk folder", two-way, every 60 s and on local changes. A file
+  changed on both sides keeps both versions (`name (conflict copy YYYY-MM-DD HH-mm).ext`;
+  "конфликтная копия" in the Russian interface). Deletions on one side move the file or folder to
+  the trash of the other side. A run that would delete a suspicious share of the files is refused.
+  Pause/resume from the tray.
 - **Log window** (`Ctrl/Cmd+Shift+L`): API calls, transfers and every sync decision with its
-  reason; categories, verbosity, search. Tokens and signed links are never written to it.
+  reason; categories, verbosity, search. Tokens and signed links are never written to it; the
+  `trace` level also records file names and paths, so do not share a log made at that level.
 - **Tray:** closing the window keeps sync running; quit with `Ctrl/Cmd+Q` pressed twice.
 - Light/dark theme follows the system. Interface language: English or Russian; it starts with the
   system language and can be fixed in Settings → Language (applies at once, no restart).
@@ -82,6 +86,7 @@ each start.
 - **Sync:** Settings (`Ctrl/Cmd+,`) → choose a local folder and a Disk folder → _Apply and start_.
 - **Files:** double-click opens a folder or downloads a file; `F2` rename, `Delete` to trash,
   `Enter` open, `Ctrl/Cmd+A` select all. Right-click for the full menu.
+- **About:** menu → About Diya (Help → About on Windows and Linux): version and the repository link.
 - **Where data lives:** see [Where the app keeps its data](#where-the-app-keeps-its-data).
 
 ## Launch at login
@@ -113,7 +118,7 @@ Node.js 22 or newer.
 ```sh
 npm ci
 npm start          # build and run
-npm run check      # lint + typecheck + format + tests with coverage
+npm run check      # lint (code, Markdown, YAML) + typecheck + format + tests
 npm run e2e        # the real app against an in-memory Disk (needs a display)
 npm run dist       # installers for the current OS into release/
 ```
@@ -121,9 +126,10 @@ npm run dist       # installers for the current OS into release/
 `YADISK_USER_DATA=<dir>` moves the app data folder (useful for a separate test profile).
 
 Sign-in needs your own application's ID: `YADISK_CLIENT_ID=<id> npm start`, or type it on the
-sign-in screen ([docs/SIGN_IN.en.md](docs/SIGN_IN.en.md)). Release process: [docs/RELEASING.en.md](docs/RELEASING.en.md).
-Architecture: [docs/ARCHITECTURE.en.md](docs/ARCHITECTURE.en.md). Contributing: [CONTRIBUTING.en.md](CONTRIBUTING.en.md)
-(AI assistants: [AGENTS.md](AGENTS.md)).
+sign-in screen ([docs/SIGN_IN.en.md](docs/SIGN_IN.en.md)). Release process:
+[docs/RELEASING.en.md](docs/RELEASING.en.md). Architecture:
+[docs/ARCHITECTURE.en.md](docs/ARCHITECTURE.en.md). Contributing:
+[CONTRIBUTING.en.md](CONTRIBUTING.en.md) (AI assistants: [AGENTS.md](AGENTS.md)).
 
 ## Where the app keeps its data
 
@@ -174,7 +180,9 @@ is not covered by the MIT license ([assets/brand/NOTICE.md](assets/brand/NOTICE.
 
 ## Limitations
 
-One sync pair.
+- One sync pair.
+- No automatic updates: the app never looks for a new version. Download it from
+  [Releases](../../releases) and install it over the old one (settings and sync state are kept).
 
 ## License
 
