@@ -48,7 +48,8 @@
     "native:rebuild:electron": "electron-builder install-app-deps",
     "native:rebuild:node": "npm rebuild better-sqlite3",
     "check": "npm run lint && npm run lint:md && npm run lint:yaml && npm run typecheck && npm run format:check && npm run test:coverage",
-    "e2e": "npm run build && npm run native:rebuild:electron && electron -r ./e2e/smoke.cjs .",
+    "e2e": "npm run build && npm run native:rebuild:electron && npm run e2e:run",
+    "e2e:run": "electron -r ./e2e/smoke.cjs .",
     "icons": "python3 scripts/make-icons.py"
   },
   "dependencies": {

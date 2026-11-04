@@ -80,7 +80,7 @@ jobs:
             echo "npm ci failed (attempt $attempt)"; sleep 20
           done
           exit 1
-      # The real app against an in-memory Disk, on a virtual display (e2e/smoke.cjs).
-      - run: xvfb-run -a npm run e2e
-        env:
-          E2E_NO_SANDBOX: '1'
+      - run: npm run build && npm run native:rebuild:electron
+      # The real app against an in-memory Disk, on a virtual display (e2e/smoke.cjs). The runner
+      # has no SUID sandbox helper, and the switch must reach Chromium before it starts.
+      - run: xvfb-run -a npm run e2e:run -- --no-sandbox
