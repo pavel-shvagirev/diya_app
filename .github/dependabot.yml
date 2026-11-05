@@ -6,8 +6,27 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     ignore:
-      # Major jumps need a planned migration (peer ranges, Electron's Node, config), not a bot PR.
-      - dependency-name: '*'
+      # Majors of the test and lint toolchains arrive in their groups below (their peer ranges
+      # move together; a blanket ban left a half-updated, uninstallable set). Majors of what
+      # sets the runtime or the language need a planned migration, not a bot PR.
+      - dependency-name: electron
+        update-types: ['version-update:semver-major']
+      - dependency-name: better-sqlite3
+        update-types: ['version-update:semver-major']
+      - dependency-name: undici
+        update-types: ['version-update:semver-major']
+      - dependency-name: react
+        update-types: ['version-update:semver-major']
+      - dependency-name: react-dom
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@types/react'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@types/react-dom'
+        update-types: ['version-update:semver-major']
+      # Typings must match the oldest Node the app supports (`engines`: 22).
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      - dependency-name: typescript
         update-types: ['version-update:semver-major']
       # 0.x: every minor is a breaking change, so the rule above does not catch it. esbuild only
       # bundles the preload script (Vite 8 has its own bundler): bump it by hand.
