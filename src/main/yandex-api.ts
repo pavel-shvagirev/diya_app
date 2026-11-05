@@ -344,7 +344,32 @@ export class YandexDiskClient {
     used_space: number;
     trash_size: number;
   }> {
-    return this.request(`${this.baseUrl}/`, { headers: this.authHeaders(), signal });
+    const info = await this.request<
+      Record<string, unknown> & {
+        type: 'disk';
+        total_space: number;
+        used_space: number;
+        trash_size: number;
+      }
+    >(`${this.baseUrl}/`, { headers: this.authHeaders(), signal });
+    this.noteRevision(info);
+    return info;
+  }
+
+  private revisionMissingSaid = false;
+
+  /**
+   * Diagnostics: does the answer carry a revision of the whole Disk, and does it change when
+   * something changes? (The reference does not list the field.) Logged at debug level only.
+   */
+  private noteRevision(info: Record<string, unknown>): void {
+    const revision = info.revision;
+    if (typeof revision === 'number' || typeof revision === 'string') {
+      logger.debug('api', `disk info: revision ${revision}`);
+    } else if (!this.revisionMissingSaid) {
+      this.revisionMissingSaid = true;
+      logger.debug('api', `disk info: no revision field (fields: ${Object.keys(info).join(', ')})`);
+    }
   }
 
   // ── Listing ──────────────────────────────────────────────────

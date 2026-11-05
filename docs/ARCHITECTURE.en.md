@@ -39,11 +39,11 @@ Electron app, three processes of code:
   `debug` by default and is not stored in settings; turning on `trace` writes a warning into the log
   and the window shows a red banner.
 - **Windows and menus:** `window-holder.ts` (re-creates the main window on demand), `quit-guard.ts`
-  - `hint-window.ts` (double Cmd/Ctrl+Q), `tray.ts`, `startup.ts` (start in the tray or with the
-    window; the macOS Dock icon exists only while a window is open; the notice about a second launch
-    of another version), `app-menu.ts`, `about.ts` (About dialog), `quit-key.ts` (the guarded
-    Cmd/Ctrl+Q inside windows), `app-icon.ts` (window and Dock icon), `menu-strings.ts`,
-    `security.ts` (navigation guard, CSP, `safeStorage` wrapper).
+  with `hint-window.ts` (double Cmd/Ctrl+Q), `tray.ts`, `startup.ts` (start in the tray or with the
+  window; the macOS Dock icon exists only while a window is open; the notice about a second launch
+  of another version), `app-menu.ts`, `about.ts` (About dialog), `quit-key.ts` (the guarded
+  Cmd/Ctrl+Q inside windows), `app-icon.ts` (window and Dock icon), `menu-strings.ts`,
+  `security.ts` (navigation guard, CSP, `safeStorage` wrapper).
 
 ## Sync
 
@@ -179,4 +179,5 @@ handler needs a test that triggers it. Thresholds are raised with the tests, nev
 
 `npm run e2e` (`e2e/smoke.cjs`) starts the real app against an in-memory Disk
 (`e2e/fake-disk.cjs`) with a throw-away profile and checks sign-in, browsing, create/delete/restore,
-sync and the language switch; it needs a display and is not part of CI.
+sync and the language switch; it needs a display (CI runs it on Linux under `xvfb-run`,
+`npm run e2e:run -- --no-sandbox`).

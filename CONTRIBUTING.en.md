@@ -28,8 +28,8 @@ if a native-module error appears after switching, run `npm run native:rebuild:no
 - Anything with a security impact needs a note in the PR; a function with a known problem is
   switched off through `src/shared/features.ts`, enforced in the main process.
 - Update `CHANGELOG.en.md` and `CHANGELOG.md` for user-visible changes; keep every Russian/English
-  document pair in step (`X.md` is Russian, `X.en.md` English: README, CHANGELOG, ARCHITECTURE,
-  RELEASING, SIGN_IN).
+  document pair in step (`X.md` is Russian, `X.en.md` English: README, CHANGELOG, CONTRIBUTING,
+  SECURITY, CODE_OF_CONDUCT, ARCHITECTURE, RELEASING, SIGN_IN).
 - Never commit tokens, client secrets, personal paths or account data; fixtures use fake values.
 - Be respectful: [CODE_OF_CONDUCT.en.md](CODE_OF_CONDUCT.en.md).
 - Working with an AI assistant: [AGENTS.md](AGENTS.md) is the briefing it follows.

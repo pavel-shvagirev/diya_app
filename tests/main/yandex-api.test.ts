@@ -489,6 +489,33 @@ describe('request rate', () => {
   });
 });
 
+describe('disk info in the log', () => {
+  const base = { type: 'disk', total_space: 10, used_space: 5, trash_size: 1 };
+  const lines = () => logger.getEntries().filter(e => e.msg.startsWith('disk info'));
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+    logger.clear();
+  });
+
+  it('records the revision of the Disk when the answer carries one', async () => {
+    mockFetch.mockResolvedValue(res(200, { ...base, revision: 1793900000123 }));
+    const info = await new YandexDiskClient('t').getDiskInfo();
+    expect(info.used_space).toBe(5);
+    expect(lines().map(l => l.msg)).toEqual(['disk info: revision 1793900000123']);
+  });
+
+  it('says which fields it has when there is no revision, and only once', async () => {
+    mockFetch.mockResolvedValue(res(200, base));
+    const client = new YandexDiskClient('t');
+    await client.getDiskInfo();
+    await client.getDiskInfo();
+    expect(lines().map(l => l.msg)).toEqual([
+      'disk info: no revision field (fields: type, total_space, used_space, trash_size)',
+    ]);
+  });
+});
+
 describe('YandexDiskClient: network failures, timeouts and server advice', () => {
   const quick = (opts = {}) =>
     new YandexDiskClient('tok', { baseDelay: 1, pollInterval: 1, minInterval: 0, ...opts });

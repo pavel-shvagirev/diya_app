@@ -42,8 +42,9 @@ Unofficial desktop client for [Yandex Disk](https://disk.yandex.com/): a compact
   the trash of the other side. A run that would delete a suspicious share of the files is refused.
   Pause/resume from the tray.
 - **Log window** (`Ctrl/Cmd+Shift+L`): API calls, transfers and every sync decision with its
-  reason; categories, verbosity, search. Tokens and signed links are never written to it; the
-  `trace` level also records file names and paths, so do not share a log made at that level.
+  reason; categories, verbosity, search. Tokens and signed links are never written to it, but file
+  names and paths are, so read a log before you share it; the `trace` level also records whole
+  Disk responses, so never share a log made at that level.
 - **Second launch:** one copy per user runs at a time (installed and portable/AppImage share the
   data folder). Starting another brings the running window forward; if it is a different version,
   a message says that the running one stays and how to switch.
@@ -148,13 +149,13 @@ Everything is in the app data folder; nothing is stored in the registry or elsew
 | Windows | `%APPDATA%\diya`                     |
 | Linux   | `~/.config/diya`                     |
 
-| File                | What it is and why it exists                                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `token.bin`         | Your Yandex access and refresh tokens, encrypted with the OS keystore (Keychain, DPAPI, GNOME Keyring/KWallet). If no keystore is available the token is not saved.                                                                                                                                                                                                                                        |
-| `client-secret.bin` | The client secret of your Yandex application, encrypted with the OS keystore (not saved at all if there is no keystore). Only sent to Yandex when signing in.                                                                                                                                                                                                                                              |
-| `settings.json`     | The OAuth application ID you typed in, if any, the interface language you fixed, and a random device ID that Yandex requires for the sign-in. No passwords, no tokens.                                                                                                                                                                                                                                     |
-| `sync.db`           | SQLite database: the sync pair (local folder ⇄ Disk folder) and what each file looked like after the last sync. Without it the next run cannot tell a deletion from a new file, so it is rebuilt cautiously, never by deleting.                                                                                                                                                                            |
-| `logs/`             | `diya.log` (over 5 MB it moves to `diya.log.1`, one older copy is kept): API calls, transfers and sync decisions, recorded at `debug` level by default (the level chosen in the log window is not saved between runs). Tokens and signed links are redacted. Recording at `trace` adds full Disk responses with file names and paths: do not pass such a file on. Shown in the log window; safe to delete. |
+| File                | What it is and why it exists                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `token.bin`         | Your Yandex access and refresh tokens, encrypted with the OS keystore (Keychain, DPAPI, GNOME Keyring/KWallet). If no keystore is available the token is not saved.                                                                                                                                                                                                                                                                           |
+| `client-secret.bin` | The client secret of your Yandex application, encrypted with the OS keystore (not saved at all if there is no keystore). Only sent to Yandex when signing in.                                                                                                                                                                                                                                                                                 |
+| `settings.json`     | The OAuth application ID you typed in, if any, the interface language you fixed, and a random device ID that Yandex requires for the sign-in. No passwords, no tokens.                                                                                                                                                                                                                                                                        |
+| `sync.db`           | SQLite database: the sync pair (local folder ⇄ Disk folder) and what each file looked like after the last sync. Without it the next run cannot tell a deletion from a new file, so it is rebuilt cautiously, never by deleting.                                                                                                                                                                                                               |
+| `logs/`             | `diya.log` (over 5 MB it moves to `diya.log.1`, one older copy is kept): API calls, transfers and sync decisions, recorded at `debug` level by default (the level chosen in the log window is not saved between runs). Tokens and signed links are redacted, file names and paths are not: read it before you pass it on. Recording at `trace` adds whole Disk responses: never pass such a file on. Shown in the log window; safe to delete. |
 
 Theme choice is kept in the app's browser storage inside the same folder. The sync folder you
 chose holds your files; the app adds nothing to it except conflict copies.
@@ -188,6 +189,8 @@ is not covered by the MIT license ([assets/brand/NOTICE.md](assets/brand/NOTICE.
 ## Limitations
 
 - One sync pair.
+- The Disk has no change feed, so Disk-side changes are picked up by polling: within about a
+  minute, and the whole folder tree is re-read every 30 minutes. Local changes are noticed at once.
 - No automatic updates: the app never looks for a new version. Download it from
   [Releases](https://github.com/pavel-shvagirev/diya_app/releases) and install it over the old one
   (settings and sync state are kept).

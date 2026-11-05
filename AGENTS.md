@@ -34,7 +34,7 @@ npm run check             # THE gate: lint (code, md, yaml) + types + prettier +
 npm test                  # vitest (pretest rebuilds better-sqlite3 for Node)
 npm run e2e               # real app vs fake Disk; needs a display; E2E_SHOTS=dir saves screenshots
 npm run dist              # installers for this OS into release/
-npm run icons             # regenerate build/icon.png and the tray/window icons
+npm run icons             # regenerate build/icon.png, build/icons/ (Linux sizes), tray/window icons
 ```
 
 Done means `npm run check` passes **and** the change was exercised, not just compiled (run the

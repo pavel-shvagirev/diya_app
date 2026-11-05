@@ -12,7 +12,8 @@
 3. По желанию пробный прогон: **Actions → Release → Run workflow** на `main` собирает все
    установщики без тега и без релиза; скачайте их из артефактов прогона и попробуйте.
 4. Тег и пуш: `git tag vX.Y.Z && git push origin vX.Y.Z` (тег должен совпадать с версией в
-   `package.json`, workflow это проверяет).
+   `package.json`, workflow это проверяет и ничего не собирает, пока CI для этого коммита не
+   зелёный).
 5. Workflow **Release** собирает Linux x64 и arm64 (AppImage, deb, rpm; собираются на Ubuntu 26.04,
    то есть рассчитаны на Ubuntu 26.04+ и другие дистрибутивы с такой же новой glibc), macOS (dmg и
    zip, только Apple Silicon) и Windows x64 и arm64 (установщик и portable), каждую архитектуру на

@@ -39,12 +39,16 @@ framework, no JS theming engine.
 - **Toolbar:** back / forward / up, path bar (clickable breadcrumbs), name filter, actions
   (Upload, New folder, Download, Share, Delete; Restore / Restore as… / Delete forever / Empty
   trash in the trash view, where the path bar follows folders opened inside the trash), refresh,
-  settings.
+  settings. Buttons are icon-only; the exception is "Empty trash", which also carries a text label
+  because it is destructive.
 - **Left: folder tree** (lazy, keyboard-navigable, drop target for moving items; the synced
   folder carries a badge; Trash is the last node). Width is draggable.
 - **Right: table** (Name, Modified, Size, Type; sortable; folders first; multi-select with
   click / Ctrl / Shift; context menu; double-click opens a folder or downloads a file; OS files
   can be dropped to upload; rows can be dragged onto tree folders).
+- **Log window:** a bar of filters (categories, verbosity; they wrap) and a full-width search on
+  their own row, then the actions (copy, open the file, clear; they do not wrap); a red banner
+  while `trace` is recorded.
 - **Status bar:** counts, transfers (popover with per-file progress), sync state with live
   progress (opens Settings), quota.
 - **Settings** (modal): sync folders, on/off, sync now, status; appearance (theme, language);
@@ -55,9 +59,11 @@ framework, no JS theming engine.
   item of the app menu), Quit ("Завершить" in Russian). Tray = Open,
   Pause/Resume sync (or "Set up sync…"), Settings, Quit. Labels follow the interface language
   (Settings → Language, else the OS).
-- **Closing vs quitting:** Cmd/Ctrl+W closes a window and the app stays in the tray; Cmd/Ctrl+Q
-  shows a hint and needs a second press within 3 s; the menu and tray "Quit" items are immediate
-  (the shortcut is handled in the window, so the item shows none).
+- **Closing vs quitting:** Cmd/Ctrl+W (or the close button) closes the window and the app stays in
+  the tray; on macOS the Dock icon goes with the last window and returns with the next one. With
+  sync set up and a saved session the app starts like that, in the tray, with a system notification.
+  Cmd/Ctrl+Q shows a hint and needs a second press within 3 s; the menu and tray "Quit" items are
+  immediate (the shortcut is handled in the window, so the item shows none).
 - **Dialogs** opened from other dialogs (folder picker from Settings) render in `.dialog-layer`
   above them; Esc closes only the topmost.
 - **Sign-in screen:** one primary button once the Client ID and secret are saved; code,
