@@ -40,9 +40,10 @@ Electron app, three processes of code:
   and the window shows a red banner.
 - **Windows and menus:** `window-holder.ts` (re-creates the main window on demand), `quit-guard.ts`
   - `hint-window.ts` (double Cmd/Ctrl+Q), `tray.ts`, `startup.ts` (start in the tray or with the
-    window; the macOS Dock icon exists only while a window is open), `app-menu.ts`, `about.ts`
-    (About dialog), `quit-key.ts` (the guarded Cmd/Ctrl+Q inside windows), `app-icon.ts` (window and
-    Dock icon), `menu-strings.ts`, `security.ts` (navigation guard, CSP, `safeStorage` wrapper).
+    window; the macOS Dock icon exists only while a window is open; the notice about a second launch
+    of another version), `app-menu.ts`, `about.ts` (About dialog), `quit-key.ts` (the guarded
+    Cmd/Ctrl+Q inside windows), `app-icon.ts` (window and Dock icon), `menu-strings.ts`,
+    `security.ts` (navigation guard, CSP, `safeStorage` wrapper).
 
 ## Sync
 
@@ -57,8 +58,8 @@ One pair (local folder ⇄ Disk folder). Every run (60 s timer, local file event
    a damaged copy is removed and reported.
 
 Runs are kept at least 5 s apart ("sync now" is exempt and starts at once), and a timer tick during
-a run queues nothing. A file the Disk answers with 5xx or 429 is not requested again for 1 min, then
-2, 4 … up to 30 min (still reported as failed meanwhile). A pause (`stop()`) cancels the run in
+a run queues nothing. A file the Disk responds with 5xx or 429 is not requested again for 1 min,
+then 2, 4 … up to 30 min (still reported as failed meanwhile). A pause (`stop()`) cancels the run in
 flight: every request and transfer of a run carries one `AbortSignal` (`RemoteStorage` takes it as
 the last argument), so a listing or a transfer stops at once, a half-downloaded `*.part` is removed,
 and the run ends as paused: not recorded as finished, not an error. Pausing during the 5 s gap
@@ -79,8 +80,8 @@ between is seen at the next full scan. Changes made through the file manager (de
 new folder, upload, restore from the trash) call `SyncEngine.invalidateRemote()`, so the next run
 reads the whole tree. The list is read page by page while the Disk changes, so a file can slip
 through: a file that is only _missing_ from a flat list is deleted locally only after a `stat`
-answers 404. Any other failure of the flat list ends the run. A sync folder other than `/` always
-walks its folders.
+responds with 404. Any other failure of the flat list ends the run. A sync folder other than `/`
+always walks its folders.
 
 **Folders.** A folder seen on both sides at a run is recorded in `sync_state`. A recorded folder
 that is missing on one side was deleted there, and the deletion is carried to the other side (the
@@ -128,14 +129,14 @@ periodic check that repairs a lost cursor.
 ## Reliability of the API layer
 
 - Every API request has a timeout (30 s, body included). Only reads (GET) are repeated after a
-  network failure; a lost answer to a write may hide a write that happened. 429 and 5xx are
+  network failure; a lost response to a write may hide a write that happened. 429 and 5xx are
   repeated with backoff, the server's `Retry-After` (seconds or a date, at most a minute) wins.
 - Errors are `YandexApiError` (`api-error.ts`): `status`, the API `error` id and `description`.
   Code branches on `errorStatus()`, never on message text.
 - A 202 is polled only when its link is an operation status link on the API origin
   (`/v1/disk/operations?id=…` or `/operations/<id>`).
 - Transfers (`transfer.ts`): a limit on connecting, on silence while bytes flow and on the Disk's
-  answer after an upload; an upload is repeated after 500/503 or a failed connection with a fresh
+  response after an upload; an upload is repeated after 500/503 or a failed connection with a fresh
   link; downloads are verified (size, md5, announced length) before they replace anything.
   Every call takes an `AbortSignal` (pause, quit): nothing is sent after it fires and an upload
   or download in flight is cut off, not repeated.

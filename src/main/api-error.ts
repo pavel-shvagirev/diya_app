@@ -22,12 +22,25 @@ export class YandexApiError extends Error {
   }
 }
 
-/** A request that got no answer in time (connection or body stalled). */
+/** A request that got no response in time (connection or body stalled). */
 export class RequestTimeoutError extends Error {
   constructor(what: string, ms: number) {
     super(`${what} timed out after ${Math.round(ms / 1000)} s`);
     this.name = 'RequestTimeoutError';
   }
+}
+
+/**
+ * An error for the log. undici reports every network failure as `fetch failed` and keeps the real
+ * reason (`ECONNRESET`, a DNS or TLS error ...) in `cause`: without it the log cannot tell them apart.
+ */
+export function describeError(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const cause = err.cause;
+  if (!(cause instanceof Error)) return err.message;
+  const why = (cause as { code?: unknown }).code;
+  const detail = typeof why === 'string' ? why : cause.message;
+  return detail && detail !== err.message ? `${err.message} (${detail})` : err.message;
 }
 
 /** HTTP status of an error: typed errors carry it, older `<status>: text` messages are parsed. */

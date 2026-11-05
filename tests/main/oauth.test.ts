@@ -8,7 +8,7 @@ import {
   type DeviceCode,
 } from '../../src/main/oauth.js';
 
-// Answer shapes are copied from the official examples:
+// Response shapes are copied from the official examples:
 // https://yandex.com/dev/id/doc/en/codes/screen-code-oauth
 const CODE_ANSWER = {
   device_code: '3e2a5a5c0e02439aa78a23442721848c',
@@ -36,7 +36,7 @@ const code: DeviceCode = {
 };
 
 describe('requestDeviceCode', () => {
-  it('posts client_id/device_id/device_name as a form and parses the answer', async () => {
+  it('posts client_id/device_id/device_name as a form and parses the response', async () => {
     const f = vi.fn().mockResolvedValue(reply(200, CODE_ANSWER));
     const out = await requestDeviceCode({ clientId: 'cid' }, 'dev-1', 'My PC', { fetch: f });
     expect(out).toEqual({
@@ -65,7 +65,7 @@ describe('requestDeviceCode', () => {
     });
   });
 
-  it('turns documented error answers into OAuthError with the code', async () => {
+  it('turns documented error responses into OAuthError with the code', async () => {
     const f = vi
       .fn()
       .mockResolvedValue(reply(400, { error: 'invalid_client', error_description: 'not found' }));
@@ -77,7 +77,7 @@ describe('requestDeviceCode', () => {
     });
   });
 
-  it('rejects an answer without codes and a non-JSON failure', async () => {
+  it('rejects a response without codes and a non-JSON failure', async () => {
     await expect(
       requestDeviceCode({ clientId: 'c' }, 'd', 'n', {
         fetch: vi.fn().mockResolvedValue(reply(200, {})),
@@ -93,7 +93,7 @@ describe('requestDeviceCode', () => {
 describe('pollDeviceToken', () => {
   const pending = () => reply(400, { error: 'authorization_pending' });
 
-  it('keeps asking while the answer is authorization_pending, then returns the tokens', async () => {
+  it('keeps asking while the response is authorization_pending, then returns the tokens', async () => {
     const f = vi
       .fn()
       .mockResolvedValueOnce(pending())
@@ -156,7 +156,7 @@ describe('pollDeviceToken', () => {
     await expect(out).rejects.toMatchObject({ code: 'cancelled' });
   });
 
-  it('rejects an answer that has no access_token', async () => {
+  it('rejects a response that has no access_token', async () => {
     const f = vi.fn().mockResolvedValue(reply(200, { token_type: 'bearer' }));
     await expect(
       pollDeviceToken({ clientId: 'c' }, code, new AbortController().signal, { fetch: f })

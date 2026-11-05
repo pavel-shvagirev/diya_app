@@ -35,7 +35,12 @@ import { createQuitGuard } from './quit-guard.js';
 import { attachQuitKey } from './quit-key.js';
 import { YandexRemote } from './remote-storage.js';
 import { createSecureWindow, initAppSecurity, safeStorage } from './security.js';
-import { createDockVisibility, shouldStartInTray } from './startup.js';
+import {
+  createDockVisibility,
+  launchInfo,
+  secondLaunchNotice,
+  shouldStartInTray,
+} from './startup.js';
 import { setSyncEnabled } from './sync-control.js';
 import { SyncDB } from './sync-db.js';
 import { SyncEngine } from './sync-engine.js';
@@ -233,7 +238,7 @@ app.setPath('userData', process.env.YADISK_USER_DATA || path.join(app.getPath('a
 
 // Two instances would run two sync engines over the same folder and database and
 // fight each other (duplicates, conflicts). The second launch just focuses the first.
-const gotLock = app.requestSingleInstanceLock();
+const gotLock = app.requestSingleInstanceLock(launchInfo(app.getVersion()));
 if (!gotLock) app.quit();
 
 void (gotLock ? app.whenReady() : Promise.resolve()).then(() => {
@@ -384,9 +389,17 @@ app.on('window-all-closed', () => {
   if (!hasTray() && process.platform !== 'darwin') quitNow();
 });
 
-app.on('second-instance', () => {
+app.on('second-instance', (_event, _argv, _cwd, additionalData) => {
   logger.info('app', 'second launch ignored — focusing the running instance');
-  showWindow();
+  const win = windows.show();
+  const notice = secondLaunchNotice(app.getVersion(), additionalData);
+  if (!notice) return;
+  const s = menuStrings();
+  void dialog.showMessageBox(win, {
+    type: 'info',
+    message: s.alreadyRunning,
+    detail: s.alreadyRunningDetail(notice.running, notice.started),
+  });
 });
 
 export { apiClient };

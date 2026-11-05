@@ -116,7 +116,7 @@ describe('App', () => {
     expect(await screen.findByText(t.authLead)).toBeInTheDocument();
   });
 
-  it('shows "loading" until the auth check answers', () => {
+  it('shows "loading" until the auth check responses', () => {
     api.authStatus.mockReturnValue(new Promise(() => undefined));
     render(<App />);
     expect(screen.getByText(t.loading)).toBeInTheDocument();

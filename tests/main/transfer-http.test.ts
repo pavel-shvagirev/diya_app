@@ -192,7 +192,7 @@ describe('a connection that goes quiet is cut', () => {
     getDownloadHref: vi.fn().mockResolvedValue({ href: `${quietBase}/down` }),
   });
 
-  it('download: no answer at all', async () => {
+  it('download: no response at all', async () => {
     Object.assign(transferTuning, { headersMs: 150 });
     mode = 'no-headers';
     const dst = join(dir, 'q1.bin');
@@ -219,7 +219,7 @@ describe('a connection that goes quiet is cut', () => {
     expect(readFileSync(dst, 'utf8')).toBe('xxxxx');
   });
 
-  it('upload: the Disk takes the file but never answers', async () => {
+  it('upload: the Disk takes the file but never responds', async () => {
     Object.assign(transferTuning, { responseMs: 150, attempts: 1 });
     mode = 'no-answer';
     const src = join(dir, 'q3.bin');
@@ -227,7 +227,7 @@ describe('a connection that goes quiet is cut', () => {
     await expect(uploadFile(quietClient() as never, src, '/x', false)).rejects.toThrow(/timed out/);
   });
 
-  it('upload: no answer at all; it is repeated, then given up', async () => {
+  it('upload: no response at all; it is repeated, then given up', async () => {
     Object.assign(transferTuning, { responseMs: 100, attempts: 2, retryDelayMs: 1 });
     mode = 'no-headers';
     const src = join(dir, 'q4.bin');

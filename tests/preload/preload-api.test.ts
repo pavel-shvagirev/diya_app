@@ -27,7 +27,7 @@ describe('every window.api method', () => {
     await import('../../src/preload/preload.js');
   });
 
-  it('request methods call exactly one known IPC channel and return its answer', async () => {
+  it('request methods call exactly one known IPC channel and return its response', async () => {
     const names = Object.keys(api).filter(n => !n.startsWith('on') && n !== 'pathForFile');
     expect(names.length).toBeGreaterThan(30);
     for (const name of names) {

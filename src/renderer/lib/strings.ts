@@ -294,7 +294,7 @@ const en: typeof ru = {
   logTipRecording:
     'How detailed the app collects entries at all. Enable trace only while hunting a problem',
   logTraceWarning:
-    'Trace level: the log and its file hold full Disk answers with the names and paths of your files. Do not send or publish such a file; debug is usually enough for diagnosis.',
+    'Trace level: the log and its file hold full Disk responses with the names and paths of your files. Do not send or publish such a file; debug is usually enough for diagnosis.',
   logTipCategory: 'Show or hide this category',
   logTipClear: 'Clear the window (the log file is untouched)',
   logTipCopy: 'Copy the shown entries to the clipboard',

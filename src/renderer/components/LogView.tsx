@@ -70,7 +70,7 @@ export function LogView(): JSX.Element {
     if (follow && listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [shown, follow]);
 
-  // The file gets whatever is recorded: trace holds full Disk answers (names and paths of files).
+  // The file gets whatever is recorded: trace holds full Disk responses (names and paths of files).
   const sensitive = recordLevel === 'trace' || entries.some(x => x.level === 'trace');
 
   const toggleCat = (c: LogCategory): void =>

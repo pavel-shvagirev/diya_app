@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createDockVisibility, shouldStartInTray } from '../../src/main/startup.js';
+import {
+  createDockVisibility,
+  launchInfo,
+  secondLaunchNotice,
+  shouldStartInTray,
+} from '../../src/main/startup.js';
 
 describe('shouldStartInTray', () => {
   const ready = { configured: true, signedIn: true, trayReady: true };
@@ -46,5 +51,34 @@ describe('createDockVisibility', () => {
     const d = { hide: vi.fn(), show: vi.fn().mockRejectedValue(new Error('no')) };
     expect(() => createDockVisibility('darwin', d).show()).not.toThrow();
     await Promise.resolve();
+  });
+});
+
+describe('a second launch of the app', () => {
+  it('tells the running copy which version was started', () => {
+    expect(launchInfo('0.2.5')).toEqual({ version: '0.2.5' });
+  });
+
+  it('is silent when it is the same version: the window just comes forward', () => {
+    expect(secondLaunchNotice('0.2.5', launchInfo('0.2.5'))).toBeNull();
+  });
+
+  it('is reported when the version differs (e.g. the .deb is running, the AppImage is started)', () => {
+    expect(secondLaunchNotice('0.2.1', launchInfo('0.2.5'))).toEqual({
+      running: '0.2.1',
+      started: '0.2.5',
+    });
+  });
+
+  it.each([
+    ['nothing (an older copy sends no data)', undefined],
+    ['a string', '0.2.5'],
+    ['no version', {}],
+    ['a version that is not a string', { version: 5 }],
+    ['an empty version', { version: '' }],
+    ['a version with markup or spaces', { version: '<b>1</b> x' }],
+    ['a very long version', { version: '1'.repeat(40) }],
+  ])('ignores what is not a plain version: %s', (_why, data) => {
+    expect(secondLaunchNotice('0.2.1', data)).toBeNull();
   });
 });

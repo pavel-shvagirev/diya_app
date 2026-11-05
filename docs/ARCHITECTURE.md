@@ -41,7 +41,8 @@
   предупреждение, а окно показывает красную плашку.
 - **Окна и меню:** `window-holder.ts` (пересоздаёт главное окно по требованию), `quit-guard.ts` +
   `hint-window.ts` (двойное Cmd/Ctrl+Q), `tray.ts`, `startup.ts` (старт в трее или с окном; значок в
-  Dock на macOS есть, только пока открыто окно), `app-menu.ts`, `about.ts` (окно «О программе»),
+  Dock на macOS есть, только пока открыто окно; сообщение о втором запуске другой версии),
+  `app-menu.ts`, `about.ts` (окно «О программе»),
   `quit-key.ts` (защищённое Cmd/Ctrl+Q внутри окон), `app-icon.ts` (иконка окна и Dock),
   `menu-strings.ts`, `security.ts` (защита навигации, CSP, обёртка `safeStorage`).
 

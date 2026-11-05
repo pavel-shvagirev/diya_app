@@ -45,7 +45,7 @@ export function registerLogIpc(): void {
         // The warning is part of the log: a file that is passed on carries it.
         logger.warn(
           'app',
-          'trace recording is on: the log now holds full Disk answers with the names and paths of your files — do not share or publish this file'
+          'trace recording is on: the log now holds full Disk responses with the names and paths of your files — do not share or publish this file'
         );
       }
     })

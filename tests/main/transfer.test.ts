@@ -89,7 +89,7 @@ describe('transfer', () => {
     expect([...seen].sort((a, b) => a - b)).toEqual(seen);
   });
 
-  it('upload fails on a non-2xx answer', async () => {
+  it('upload fails on a non-2xx response', async () => {
     const file = join(dir, 'e.txt');
     writeFileSync(file, 'x');
     global.fetch = vi.fn(async (_u: unknown, init: RequestInit) => {
@@ -173,7 +173,7 @@ describe('transfer', () => {
   });
 });
 
-describe('transfer links come from an API answer', () => {
+describe('transfer links come from an API response', () => {
   it.each([
     'http://uploader.test/put',
     'ftp://x/y',
@@ -222,7 +222,7 @@ describe('download announced length', () => {
   });
 });
 
-describe('upload: retries, answers and limits', () => {
+describe('upload: retries, responses and limits', () => {
   let dir: string;
   let file: string;
   const realFetch = global.fetch;
@@ -261,7 +261,7 @@ describe('upload: retries, answers and limits', () => {
     expect(c.getUploadHref).toHaveBeenCalledTimes(3);
   });
 
-  it('gives up after the allowed attempts and says what the Disk answered', async () => {
+  it('gives up after the allowed attempts and says what the Disk responded', async () => {
     global.fetch = vi.fn(async (_u: unknown, init: RequestInit) => {
       await drain(init);
       return answer(503);
@@ -328,7 +328,7 @@ describe('upload: retries, answers and limits', () => {
     truncateSync(edge, MAX_UPLOAD_BYTES);
     const c = links();
     global.fetch = vi.fn(async () => answer(413)) as never;
-    // The fake answers 413 without reading: what matters is that the link was requested.
+    // The fake responds with 413 without reading: what matters is that the link was requested.
     await uploadFile(c as never, edge, '/edge.bin', false).catch(() => undefined);
     expect(c.getUploadHref).toHaveBeenCalled();
   });

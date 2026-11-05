@@ -20,7 +20,7 @@ import { mkdir, readdir, rename, rm, stat } from 'fs/promises';
 import * as path from 'path';
 
 import { resolveSafePath } from '../shared/validation.js';
-import { errorStatus } from './api-error.js';
+import { describeError, errorStatus } from './api-error.js';
 import { FsWatcher } from './fs-watcher.js';
 import { logger } from './logger.js';
 import type { SyncDB, SyncStateEntry } from './sync-db.js';
@@ -226,7 +226,7 @@ export class SyncEngine {
   private immediate = false;
   /** Ends the pause before a run early (set only while a run is waiting out the pause). */
   private endPause: (() => void) | null = null;
-  /** Files the Disk answered with a server error: when to try them again. */
+  /** Files the Disk responded with a server error: when to try them again. */
   private readonly retries = new Map<string, { attempts: number; until: number }>();
   private readonly opts: Required<SyncEngineOptions>;
 
@@ -364,8 +364,10 @@ export class SyncEngine {
         }
         return;
       }
+      // Said once per run: a long first download triggers this for every file written.
+      if (!this.rerun)
+        logger.debug('sync', 'run requested while one is in progress — will repeat once it ends');
       this.rerun = true;
-      logger.debug('sync', 'run requested while one is in progress — will repeat once it ends');
       return;
     }
     if (options.immediate) {
@@ -514,7 +516,7 @@ export class SyncEngine {
         }
       } catch (err) {
         if (signal.aborted) return this.endCancelled();
-        const message = err instanceof Error ? err.message : String(err);
+        const message = describeError(err);
         failures.push(`${op.rel}: ${message}`);
         logger.error('sync', `✗ ${op.kind} ${op.rel}: ${message}`);
         this.noteFailure(op.rel, err);
@@ -693,7 +695,7 @@ export class SyncEngine {
     return out;
   }
 
-  /** Does the Disk still hold this path? A 404 says no; any other failure is not an answer. */
+  /** Does the Disk still hold this path? A 404 says no; any other failure is not a response. */
   private async existsOnDisk(
     pair: SyncPairPaths,
     rel: string,
@@ -721,7 +723,7 @@ export class SyncEngine {
     /**
      * Empty folders are invisible in the flat list, so one known only from an earlier scan is
      * asked for by itself: a 404 says it is gone from the Disk. At most `MAX_DIR_CHECKS` per
-     * run; any other answer, or none, leaves it alone until the next full scan.
+     * run; any other response, or none, leaves it alone until the next full scan.
      */
     const goneFromDisk = async (rel: string): Promise<boolean | undefined> => {
       if (dirChecks >= MAX_DIR_CHECKS) return undefined;

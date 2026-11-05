@@ -5,21 +5,39 @@ versions: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-11-05
+
 ### Added
 
 - Start in the tray: when sync is set up and a session is saved, the app opens without a window
   and shows a system notification (a click opens the window); otherwise the window opens as
   before. On macOS the Dock icon is shown only while a window is open.
-- Build and test toolchain moved to Vite 8, Vitest 5, plugin-react 6 and esbuild 0.28; all
-  Dependabot alerts on the old test toolchain are closed. Tests for the UI handlers that Vitest 5's
-  stricter coverage measurement showed as untested; the thresholds stay at 99/99/97/95.
-- Linting of Markdown (`markdownlint-cli2`) and YAML (`scripts/lint-yaml.mjs`) in `npm run check`,
-  the pre-commit hook and CI; prose lines are limited to 100 columns.
-- Security: only the app's own two pages count as trusted frames and allowed navigation (any other
-  local `file:` address did before); the log redacts links and credentials in message texts and is
-  readable by the user only.
+- A second launch of another version (an installed `.deb` running, an AppImage started) says that
+  the running copy stays and how to switch; the same version just brings the window forward.
 - Menu "About Diya": version, repository link, the "not affiliated" notice.
 - Releases carry `SHA256SUMS.txt` and a signed build attestation (`gh attestation verify`).
+- Linting of Markdown (`markdownlint-cli2`) and YAML (`scripts/lint-yaml.mjs`) in `npm run check`,
+  the pre-commit hook and CI; prose lines are limited to 100 columns.
+
+### Changed
+
+- Linux AppImage uses the static runtime (electron-builder toolset 1.0.3): it no longer needs
+  `libfuse2` and no longer fails on arm64 with `libz.so: cannot open shared object file`.
+- Linux icons are shipped in the standard sizes (16 … 512 px); `.deb`/`.rpm` showed a gear because a
+  lone 1024 px icon is not found by the icon theme. The window is tied to its launcher
+  (`desktopName`), so the dock shows the icon of the running app.
+- The log tells network failures apart (`fetch failed (ECONNRESET)` instead of `fetch failed`),
+  names a timed-out request once, and says once per run that another run is queued.
+- Build and test toolchain moved to Vite 8, Vitest 5, plugin-react 6 and esbuild 0.28; all
+  Dependabot alerts on the old test toolchain are closed. Tests for the UI handlers that Vitest 5's
+  stricter coverage measurement showed as untested; the thresholds are 99/99/97/95.
+
+### Security
+
+- Only the app's own two pages count as trusted frames and allowed navigation (any other local
+  `file:` address did before).
+- The log redacts links and credentials in message texts; its folder and file are readable by the
+  user only.
 
 ## [0.2.1] - 2026-11-04
 
@@ -44,7 +62,7 @@ First public release.
 
 ### Changed
 
-- Sync runs are at least 5 s apart ("Sync now" starts at once); a file the Disk answers with
+- Sync runs are at least 5 s apart ("Sync now" starts at once); a file the Disk responds with
   5xx/429 is retried after 1, 2, 4 … 30 min instead of on every run.
 - Pausing or quitting cancels the run in flight, including requests and transfers.
 - Creating public links is disabled (existing links can be revoked).

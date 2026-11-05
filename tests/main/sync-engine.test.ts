@@ -26,7 +26,7 @@ class FakeRemote implements RemoteStorage {
   dirs = new Set<string>(['/']);
   clock = 0;
   failList = false;
-  /** Number of stat() calls that answer 404 (Disk still processing an upload). */
+  /** Number of stat() calls that respond with 404 (Disk still processing an upload). */
   statMisses = 0;
   /** list()/stat() omit md5, as for files the Disk has not finished hashing. */
   hideMd5 = false;
@@ -35,7 +35,7 @@ class FakeRemote implements RemoteStorage {
   expectations = new Map<string, { size?: number; md5?: string } | undefined>();
   /** Remote paths whose download fails verification, as the real transfer layer would. */
   corrupt = new Set<string>();
-  /** Every download() call, and the error (if any) the Disk answers with. */
+  /** Every download() call, and the error (if any) the Disk responds with. */
   downloads = 0;
   downloadError: Error | null = null;
   /** Folders passed to list(), folders passed to mkdir(), and flat-list requests. */
@@ -736,6 +736,40 @@ describe('SyncEngine', () => {
       expect(remote.files.has('/Sync/fresh.txt')).toBe(false);
     });
 
+    it('says once that a run is queued behind the one in progress, however often it is asked', async () => {
+      const e = make();
+      let release!: () => void;
+      const list = remote.list.bind(remote);
+      let held = false;
+      remote.list = (...args) => {
+        if (held) return list(...args); // the repeated run goes through
+        held = true;
+        return new Promise(r => (release = () => void list(...args).then(r)));
+      };
+      logger.clear();
+      const first = e.syncNow();
+      await vi.waitFor(() => expect(release).toBeDefined());
+      await e.syncNow();
+      await e.syncNow();
+      await e.syncNow();
+      release();
+      await first;
+      const said = logger.getEntries().filter(l => l.msg.includes('will repeat once it ends'));
+      expect(said).toHaveLength(1);
+    });
+
+    it('a failed file is reported with the cause that undici hides behind "fetch failed"', async () => {
+      remote.put('/Sync/a.txt', 'a');
+      const e = make();
+      remote.download = async () => {
+        throw new TypeError('fetch failed', {
+          cause: Object.assign(new Error('x'), { code: 'ECONNRESET' }),
+        });
+      };
+      await e.syncNow();
+      expect(e.getProgress().failures[0]).toBe('a.txt: fetch failed (ECONNRESET)');
+    });
+
     it('files still being written are retried by themselves after the settle time', async () => {
       const e = make({ settleMs: 150 });
       write('fresh.txt', 'fresh'); // mtime = now
@@ -1185,7 +1219,7 @@ describe('SyncEngine', () => {
       e.configure({ id: db.getPairs()[0]!.id, localPath: localDir, remotePath: '/Sync' });
       return e;
     };
-    /** Never answers; fails with the signal's reason once it fires. */
+    /** Never responds; fails with the signal's reason once it fires. */
     const hang = (seen: { signal?: AbortSignal }) => (signal?: AbortSignal) =>
       new Promise<never>((_resolve, reject) => {
         seen.signal = signal;
@@ -1348,7 +1382,7 @@ describe('SyncEngine', () => {
       e.stop();
     });
 
-    it('a file the Disk answers 5xx for is not requested again before its delay, which doubles', async () => {
+    it('a file the Disk responds with 5xx for is not requested again before its delay, which doubles', async () => {
       vi.useFakeTimers({ toFake: ['Date'] });
       try {
         const e = make({ retryBaseMs: 1000, retryMaxMs: 3000 });

@@ -24,7 +24,7 @@ body:
     attributes:
       label: Diya version / Версия Diya
       description: Menu → About / Меню → О программе
-      placeholder: '0.2.1'
+      placeholder: '0.2.5'
     validations:
       required: true
   - type: dropdown
@@ -45,7 +45,7 @@ body:
       description: |
         Log window (Ctrl/Cmd+Shift+L), only the relevant lines. Tokens and signed links are
         redacted, but file names and paths are not: look before you paste.
-        **Do not attach a log recorded at `trace` level**: it holds full Disk answers with the
+        **Do not attach a log recorded at `trace` level**: it holds full Disk responses with the
         names and paths of your files.
         Журнал (Ctrl/Cmd+Shift+L), только нужные строки. Токены и подписанные ссылки скрыты,
         имена и пути файлов нет: просмотрите перед отправкой.

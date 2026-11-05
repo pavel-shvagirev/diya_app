@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-import { YandexApiError, errorStatus } from '../../src/main/api-error.js';
+import { YandexApiError, describeError, errorStatus } from '../../src/main/api-error.js';
+import { logger } from '../../src/main/logger.js';
 import {
   YandexDiskClient,
   isApiUrl,
@@ -216,7 +217,7 @@ describe('YandexDiskClient', () => {
       expect(urls[2]).toContain('offset=3');
     });
 
-    it('listAllFiles refuses a Disk that keeps answering with the same page', async () => {
+    it('listAllFiles refuses a Disk that keeps responding with the same page', async () => {
       mockFetch.mockResolvedValue(res(200, { items: [file('a')] }));
       await expect(client.listAllFiles()).rejects.toThrow(/does not advance/);
     });
@@ -232,7 +233,7 @@ describe('YandexDiskClient', () => {
   describe('a caller signal cancels requests in flight', () => {
     afterEach(() => mockFetch.mockReset());
 
-    /** A fetch that never answers; it fails when its signal fires, as the real one does. */
+    /** A fetch that never responds; it fails when its signal fires, as the real one does. */
     const hang = (): void => {
       mockFetch.mockImplementation(
         (_u: unknown, init: RequestInit) =>
@@ -447,7 +448,7 @@ describe('YandexDiskClient', () => {
       mockFetch.mockReset();
     });
 
-    it('error answers without a JSON body still report the status', async () => {
+    it('error responses without a JSON body still report the status', async () => {
       mockFetch.mockResolvedValueOnce(res(404));
       await expect(client.getMeta('/nope')).rejects.toThrow('404: Request failed');
     });
@@ -534,6 +535,32 @@ describe('YandexDiskClient: network failures, timeouts and server advice', () =>
     mockFetch.mockClear();
     await expect(c.mkdir('/x')).rejects.toThrow(/timed out after/);
     expect(mockFetch).toHaveBeenCalledTimes(1); // a write is not
+  });
+
+  it('a timeout is logged once with its address, not twice', async () => {
+    mockFetch.mockImplementation(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) =>
+          init.signal!.addEventListener('abort', () => reject(init.signal!.reason))
+        )
+    );
+    logger.clear();
+    await expect(quick({ requestTimeout: 10, maxRetries: 1 }).getDiskInfo()).rejects.toThrow();
+    const warn = logger.getEntries().find(e => e.level === 'warn' && e.msg.includes('retry'))!;
+    expect(warn.msg.match(/GET /g)).toHaveLength(1);
+  });
+
+  it('describeError names the cause that undici hides behind "fetch failed"', () => {
+    const cause = Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' });
+    expect(describeError(new TypeError('fetch failed', { cause }))).toBe(
+      'fetch failed (ECONNRESET)'
+    );
+    expect(describeError(new TypeError('fetch failed', { cause: new Error('boom') }))).toBe(
+      'fetch failed (boom)'
+    );
+    expect(describeError(new Error('plain'))).toBe('plain');
+    expect(describeError('text')).toBe('text');
+    expect(describeError(new Error('same', { cause: new Error('same') }))).toBe('same');
   });
 
   it('a signal given by the caller aborts the call and is not retried', async () => {
@@ -652,7 +679,7 @@ describe('YandexDiskClient: network failures, timeouts and server advice', () =>
     });
   });
 
-  describe('202 answers', () => {
+  describe('202 responses', () => {
     it('are polled only when the link is an operation status link', async () => {
       mockFetch
         .mockResolvedValueOnce(res(202, { href: `${BASE}/resources?path=disk%3A%2Fb` }))

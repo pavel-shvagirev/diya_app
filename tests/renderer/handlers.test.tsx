@@ -67,7 +67,7 @@ describe('Toolbar: every button reaches its action', () => {
     expect(spies.openFolder.mock.calls).toEqual([['/'], ['/Docs']]);
   });
 
-  it('new folder, share and delete ask through dialogs and act on the answer', async () => {
+  it('new folder, share and delete ask through dialogs and act on the response', async () => {
     const prompt = vi.spyOn(dialogs, 'prompt').mockResolvedValue('Fresh');
     const share = vi.spyOn(dialogs, 'share').mockResolvedValue(null);
     const confirm = vi.spyOn(dialogs, 'confirm').mockResolvedValue(true);

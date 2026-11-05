@@ -7,6 +7,8 @@ Output: assets/icon.png           512 px, same padded artwork: the window icon (
                                   Dock icon of a development run on macOS
         build/icon.png            1024 px, transparent corners and the standard margin (electron-builder makes the
                                   macOS .icns, the Windows .ico and the Linux icons from it)
+        build/icons/NxN.png       16 … 512 px, the Linux icon set (deb, rpm, AppImage): a theme looks up
+                                  only the standard sizes, so a lone 1024 px file shows as a gear
         assets/tray-icon.png      16 px  } the tray icon; Electron picks @2x on HiDPI screens
         assets/tray-icon@2x.png   32 px  }
 Needs Pillow and NumPy: pip install pillow numpy
@@ -54,3 +56,5 @@ save(app_icon, ROOT / "build/icon.png", 1024)
 save(app_icon, ROOT / "assets/icon.png", 512)
 save(icon, ROOT / "assets/tray-icon.png", 16)
 save(icon, ROOT / "assets/tray-icon@2x.png", 32)
+for px in (16, 24, 32, 48, 64, 128, 256, 512):
+    save(app_icon, ROOT / f"build/icons/{px}x{px}.png", px)

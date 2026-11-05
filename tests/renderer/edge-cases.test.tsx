@@ -233,7 +233,7 @@ describe('browser store: failures are reported, not thrown', () => {
     expect(useBrowserStore.getState()).toMatchObject({ error: 'no trash', entries: [] });
   });
 
-  it('an older answer never replaces a newer view', async () => {
+  it('an older response never replaces a newer view', async () => {
     let release: (v: unknown) => void = () => {};
     api.listFiles.mockImplementationOnce(() => new Promise(r => (release = r)));
     const slow = useBrowserStore.getState().openFolder('/slow');

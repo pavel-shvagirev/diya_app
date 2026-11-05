@@ -133,7 +133,7 @@ export const ERROR_OBJECT = {
 
 /**
  * reference/all-files (https://yandex.com/dev/disk-api/doc/ru/reference/all-files): the
- * FilesResourceList sample, the answer of `GET /v1/disk/resources/files`. Only files, no `total`.
+ * FilesResourceList sample, the response of `GET /v1/disk/resources/files`. Only files, no `total`.
  */
 export const FILES_RESOURCE_LIST = {
   items: [

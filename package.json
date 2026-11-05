@@ -1,6 +1,6 @@
 {
   "name": "diya",
-  "version": "0.2.1",
+  "version": "0.2.5",
   "type": "module",
   "description": "Unofficial cross-platform desktop client for Yandex Disk: file manager, two-way folder sync, trash",
   "author": {
@@ -88,6 +88,7 @@
     "yaml": "^2.9.1",
     "zustand": "^5.0.16"
   },
+  "desktopName": "diya.desktop",
   "build": {
     "appId": "dev.diya.app",
     "productName": "Diya",
@@ -107,6 +108,9 @@
       "!node_modules/**/{test,tests,docs,*.md}"
     ],
     "asar": true,
+    "toolsets": {
+      "appimage": "1.0.3"
+    },
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
@@ -151,7 +155,8 @@
         "deb",
         "rpm"
       ],
-      "icon": "build/icon.png",
+      "icon": "build/icons",
+      "syncDesktopName": true,
       "category": "Network;FileTransfer",
       "synopsis": "Unofficial client for Yandex Disk",
       "maintainer": "Diya contributors <noreply@example.com>"

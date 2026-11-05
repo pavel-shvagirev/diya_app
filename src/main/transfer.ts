@@ -10,7 +10,7 @@ import { rename, rm, stat, utimes } from 'fs/promises';
 import { Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
 
-import { RequestTimeoutError, YandexApiError, errorStatus } from './api-error.js';
+import { RequestTimeoutError, YandexApiError, describeError, errorStatus } from './api-error.js';
 import { logger } from './logger.js';
 import type { YandexDiskClient } from './yandex-api.js';
 
@@ -33,7 +33,7 @@ function counting(onBytes: (total: number) => void): Transform {
   });
 }
 
-/** Upload and download links come from an API answer: only https is followed. */
+/** Upload and download links come from an API response: only https is followed. */
 function assertHttps(href: string): void {
   let ok = false;
   try {
@@ -59,7 +59,7 @@ export const transferTuning = {
   headersMs: 30_000,
   /** No byte moved for this long: the connection is considered dead. */
   stallMs: 60_000,
-  /** After the last byte of an upload the Disk may need a while to answer. */
+  /** After the last byte of an upload the Disk may need a while to respond. */
   responseMs: 300_000,
   /** Upload attempts (the first one included) and the pause before the first retry. */
   attempts: 3,
@@ -79,7 +79,7 @@ const megabytes = (bytes: number): string => `${Math.ceil(bytes / 1024 ** 2)} MB
 
 /**
  * Refuse a file larger than the free space the Disk reports. A quota that cannot be read does not
- * block the upload (the Disk answers 507 itself); a cancelled read does.
+ * block the upload (the Disk responds with 507 itself); a cancelled read does.
  */
 async function assertFreeSpace(
   client: YandexDiskClient,
@@ -137,7 +137,7 @@ class Watchdog {
 
 export type UploadResult = 'created' | 'accepted';
 
-/** What the Disk answers to a PUT, in words (official codes: reference/upload). */
+/** How the Disk responds to a PUT, in words (official codes: reference/upload). */
 function uploadRejection(status: number): YandexApiError {
   const text: Record<number, string> = {
     412: 'the Disk refused the upload (precondition failed)',
@@ -224,7 +224,7 @@ async function putFile(
     dog.kick(transferTuning.stallMs);
     onProgress?.(sent, size);
   });
-  // All of the body has been read: now the Disk answers, and may take its time.
+  // All of the body has been read: now the Disk responds, and may take its time.
   body.on('end', () => dog.kick(transferTuning.responseMs));
   const source = createReadStream(localPath);
   let readError: Error | undefined;
@@ -258,10 +258,7 @@ async function putFile(
     const failure =
       readError ??
       (timedOut ? new RequestTimeoutError(`upload ${remotePath}`, transferTuning.stallMs) : err);
-    logger.error(
-      'transfer',
-      `upload ${remotePath} failed: ${failure instanceof Error ? failure.message : String(failure)}`
-    );
+    logger.error('transfer', `upload ${remotePath} failed: ${describeError(failure)}`);
     throw failure;
   }
   dog.stop();
@@ -372,10 +369,7 @@ export async function downloadFile(
     const failure = dog.fired
       ? new RequestTimeoutError(`download ${remotePath}`, transferTuning.stallMs)
       : err;
-    logger.error(
-      'transfer',
-      `download ${remotePath} failed: ${failure instanceof Error ? failure.message : String(failure)}`
-    );
+    logger.error('transfer', `download ${remotePath} failed: ${describeError(failure)}`);
     await rm(part, { force: true });
     throw failure;
   } finally {

@@ -43,7 +43,7 @@ export interface OAuthTokens {
   expiresIn?: number;
 }
 
-/** An OAuth error answer: `code` is the documented `error` value (e.g. `authorization_pending`). */
+/** An OAuth error response: `code` is the documented `error` value (e.g. `authorization_pending`). */
 export class OAuthError extends Error {
   constructor(
     readonly code: string,
@@ -88,7 +88,7 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
 function toTokens(body: Record<string, unknown>): OAuthTokens {
   const accessToken = str(body.access_token);
-  if (!accessToken) throw new OAuthError('invalid_response', 'no access_token in the answer');
+  if (!accessToken) throw new OAuthError('invalid_response', 'no access_token in the response');
   return {
     accessToken,
     ...(str(body.refresh_token) ? { refreshToken: str(body.refresh_token) } : {}),
@@ -156,7 +156,7 @@ export async function pollDeviceToken(
   }
 }
 
-/** `POST /token` with a refresh token. The answer may carry a new refresh token. */
+/** `POST /token` with a refresh token. The response may carry a new refresh token. */
 export async function refreshAccessToken(
   app: OAuthApp,
   refreshToken: string,

@@ -25,6 +25,9 @@ const ru = {
   startedSyncing: 'Diya работает в трее, синхронизация запущена',
   startedPaused: 'Diya работает в трее, синхронизация на паузе',
   startedHint: 'Нажмите на значок в трее, чтобы открыть окно',
+  alreadyRunning: 'Diya уже запущена',
+  alreadyRunningDetail: (running: string, started: string) =>
+    `Уже работает версия ${running}; запущенная вами копия (версия ${started}) закрыта. Чтобы работать с версией ${started}, завершите работающую (значок в трее → «Завершить») и запустите её снова.`,
   edit: 'Правка',
   view: 'Вид',
   window: 'Окно',
@@ -71,6 +74,9 @@ const en: typeof ru = {
   startedSyncing: 'Diya is running in the tray, sync has started',
   startedPaused: 'Diya is running in the tray, sync is paused',
   startedHint: 'Click the tray icon to open the window',
+  alreadyRunning: 'Diya is already running',
+  alreadyRunningDetail: (running: string, started: string) =>
+    `Version ${running} is running; the copy you just started (version ${started}) was closed. To use version ${started}, quit the running one (tray icon → Quit) and start it again.`,
   edit: 'Edit',
   view: 'View',
   window: 'Window',

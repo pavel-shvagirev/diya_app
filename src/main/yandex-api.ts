@@ -4,12 +4,12 @@
  * All HTTP requests go to the main process — no CORS issues, tokens stay secure.
  * Response shapes follow https://yandex.com/dev/disk-api/doc/en/reference/ :
  * folder listings come back as `_embedded.items`, paths look like `disk:/a/b`
- * (or `trash:/x_123`), and long operations answer 202 with an operation link.
+ * (or `trash:/x_123`), and long operations respond with 202 with an operation link.
  *
  * @module yandex-api
  */
 
-import { RequestTimeoutError, YandexApiError } from './api-error.js';
+import { RequestTimeoutError, YandexApiError, describeError } from './api-error.js';
 import { logger, redactUrl } from './logger.js';
 import type { FileInfoList, FileMetadata } from '../shared/types.js';
 
@@ -37,7 +37,7 @@ const DEFAULT_OPTIONS: Required<YandexDiskClientOptions> = {
   requestTimeout: 30_000,
 };
 
-/** Longest pause a `Retry-After` answer may impose on us. */
+/** Longest pause a `Retry-After` response may impose on us. */
 const MAX_RETRY_AFTER_MS = 60_000;
 
 /** Seconds or an HTTP date → milliseconds (undefined when absent or unusable). */
@@ -217,19 +217,23 @@ export class YandexDiskClient {
       const failure = timedOut
         ? new RequestTimeoutError(`${method} ${shown}`, this.options.requestTimeout)
         : err;
-      const message = failure instanceof Error ? failure.message : String(failure);
-      // Only reads are repeated after a network failure: a lost answer to a write may hide a
+      const message = describeError(failure);
+      // A timeout error already starts with the request: do not repeat it.
+      const what = message.startsWith(`${method} ${shown}`)
+        ? message
+        : `${method} ${shown} — ${message}`;
+      // Only reads are repeated after a network failure: a lost response to a write may hide a
       // write that happened (a second copy would then fail with 409 and mislead the user).
       if (method === 'GET' && retries < this.options.maxRetries && !init?.signal?.aborted) {
         const delay = this.options.baseDelay * 2 ** retries;
         logger.warn(
           'api',
-          `${method} ${shown} — ${message}, retry ${retries + 1}/${this.options.maxRetries} in ${delay} ms`
+          `${what}, retry ${retries + 1}/${this.options.maxRetries} in ${delay} ms`
         );
         await new Promise(r => setTimeout(r, delay));
         return this.send(url, init, retries + 1, refreshed);
       }
-      logger.error('api', `${method} ${shown} — network error: ${message}`);
+      logger.error('api', `${what} (network error)`);
       throw failure;
     }
     const ms = Date.now() - started;
@@ -293,7 +297,7 @@ export class YandexDiskClient {
   }
 
   /**
-   * Run a mutating call. A 202 answer means "accepted" — wait for the
+   * Run a mutating call. A 202 response means "accepted" — wait for the
    * operation to finish so callers can refresh the view afterwards.
    */
   private async mutate(url: string, method: string, signal?: AbortSignal): Promise<void> {
@@ -375,7 +379,7 @@ export class YandexDiskClient {
 
   /**
    * GET /v1/disk/resources?path=&fields= — a folder as the sync engine needs it: names, paths,
-   * sizes, timestamps and checksums only, which keeps big folders' answers small.
+   * sizes, timestamps and checksums only, which keeps big folders' responses small.
    */
   async listFolder(path: string, signal?: AbortSignal): Promise<FileInfoList> {
     return this.listAll('resources', path, signal, FOLDER_FIELDS);
@@ -383,7 +387,7 @@ export class YandexDiskClient {
 
   /**
    * GET /v1/disk/resources/files — every file on the Disk in one flat list, whatever the folder
-   * (https://yandex.com/dev/disk-api/doc/en/reference/all-files). The answer carries no `total`, so
+   * (https://yandex.com/dev/disk-api/doc/en/reference/all-files). The response carries no `total`, so
    * pages are read until an empty one.
    */
   async listAllFiles(signal?: AbortSignal): Promise<FileMetadata[]> {
@@ -396,7 +400,7 @@ export class YandexDiskClient {
       );
       const page = res.items ?? [];
       if (page.length === 0) return items;
-      // A Disk that ignores the offset would answer with the same page for ever.
+      // A Disk that ignores the offset would respond with the same page for ever.
       if (page[0]?.path !== undefined && page[0].path === firstOfLastPage) {
         throw new Error('The Disk file list does not advance');
       }

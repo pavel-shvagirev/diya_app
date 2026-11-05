@@ -127,7 +127,7 @@ describe('ui store', () => {
 
 describe('dialog store', () => {
   beforeEach(() => useDialogStore.setState({ current: null }));
-  it('every dialog helper shows its kind and resolves with the answer', async () => {
+  it('every dialog helper shows its kind and resolves with the response', async () => {
     const p1 = dialogs.prompt({ title: 't', label: 'l', initial: '', submit: 's' });
     expect(useDialogStore.getState().current?.kind).toBe('prompt');
     (useDialogStore.getState().current as { resolve: (v: string) => void }).resolve('x');

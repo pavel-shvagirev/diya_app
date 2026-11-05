@@ -20,7 +20,7 @@ is promised.
 - The OAuth session is stored encrypted with the operating-system keystore (Electron
   `safeStorage`); tokens, signed links and credentials written into a message are redacted from
   logs, and the log folder and file are readable by the user only. Log lines still hold file names
-  and paths (always at the `trace` level: whole Disk answers), so do not post a log unread.
+  and paths (always at the `trace` level: whole Disk responses), so do not post a log unread.
 - The access token is sent only to `https://cloud-api.yandex.net`; the application's client
   secret and the refresh token only to `https://oauth.yandex.ru` / `.com`. The secret and the
   session are stored encrypted (`client-secret.bin`, `token.bin`). Nothing is sent anywhere else:

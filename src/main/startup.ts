@@ -52,3 +52,23 @@ export function createDockVisibility(
     },
   };
 }
+
+/** What a starting copy hands to the running one (`requestSingleInstanceLock` data). */
+export function launchInfo(version: string): { version: string } {
+  return { version };
+}
+
+/**
+ * The running copy gets this from a second launch and shows the window. When the second copy is
+ * another version (an installed .deb and a downloaded AppImage, say) it was closed instead of
+ * started, which the user would not guess: return the two versions for a notice. The data comes
+ * from another process, so only a short plain version string is accepted.
+ */
+export function secondLaunchNotice(
+  runningVersion: string,
+  data: unknown
+): { running: string; started: string } | null {
+  const started = (data as { version?: unknown } | null | undefined)?.version;
+  if (typeof started !== 'string' || !/^[\w.+-]{1,32}$/.test(started)) return null;
+  return started === runningVersion ? null : { running: runningVersion, started };
+}
