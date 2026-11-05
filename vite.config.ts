@@ -12,15 +12,15 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       input: {
-        main: path.resolve(__dirname, 'src/renderer/index.html'),
-        log: path.resolve(__dirname, 'src/renderer/log.html'),
+        main: path.resolve(import.meta.dirname, 'src/renderer/index.html'),
+        log: path.resolve(import.meta.dirname, 'src/renderer/log.html'),
       },
     },
   },
   resolve: {
     alias: {
-      '@shared': path.resolve(__dirname, 'src/shared'),
-      '@renderer': path.resolve(__dirname, 'src/renderer'),
+      '@shared': path.resolve(import.meta.dirname, 'src/shared'),
+      '@renderer': path.resolve(import.meta.dirname, 'src/renderer'),
     },
   },
   server: {

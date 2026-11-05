@@ -4,7 +4,7 @@ import { join } from 'path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { logTuning, logger, redactUrl, sanitize } from '../../src/main/logger.js';
+import { logTuning, logger, redactText, redactUrl, sanitize } from '../../src/main/logger.js';
 import { visibleAt } from '../../src/shared/log.js';
 
 describe('redaction', () => {
@@ -36,6 +36,29 @@ describe('redaction', () => {
     expect(sanitize(new Error('boom'))).toEqual({ name: 'Error', message: 'boom' });
     const big = sanitize({ blob: 'x'.repeat(50_000) }) as { truncated: string };
     expect(big.truncated.length).toBeLessThan(4200);
+  });
+});
+
+describe('redaction of free text', () => {
+  it('hides the query of a link and the value of a token written into a message', () => {
+    const msg = redactText(
+      'download failed: https://downloader.disk.yandex.ru/zip/abc?sign=SECRET&x=1 (HTTP 500)'
+    );
+    expect(msg).toBe('download failed: https://downloader.disk.yandex.ru/zip/abc?… (HTTP 500)');
+    expect(redactText('GET /v1/disk/resources?path=%2Fa → 200')).toBe(
+      'GET /v1/disk/resources?path=%2Fa → 200'
+    );
+    expect(redactText('header Authorization: OAuth y0_AgAAAA-secret.token')).not.toContain('y0_');
+    expect(redactText('Bearer abc.def-123 sent')).toBe('Bearer *** sent');
+    expect(redactText('refresh_token=abc123&code=999 failed')).toBe(
+      'refresh_token=***&code=*** failed'
+    );
+  });
+
+  it('a message passes through the logger redacted, in the buffer as well as in the file', () => {
+    logger.clear();
+    logger.error('transfer', 'rejected: https://up.example.test/u?token=TOPSECRET');
+    expect(JSON.stringify(logger.getEntries())).not.toContain('TOPSECRET');
   });
 });
 
@@ -98,6 +121,18 @@ describe('logger', () => {
       logger.close();
       rmSync(dir, { recursive: true, force: true });
     });
+
+    it.skipIf(process.platform === 'win32')(
+      'the log folder and file are readable by the user only (file names and paths are inside)',
+      () => {
+        const sub = join(dir, 'logs');
+        const file = logger.attachFile(sub);
+        logger.info('app', 'x');
+        logger.close();
+        expect(statSync(sub).mode & 0o077).toBe(0);
+        expect(statSync(file).mode & 0o077).toBe(0);
+      }
+    );
 
     it('also writes redacted JSON lines to the log file', async () => {
       const file = logger.attachFile(dir);

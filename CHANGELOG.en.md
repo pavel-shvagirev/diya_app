@@ -7,8 +7,14 @@ versions: [SemVer](https://semver.org/).
 
 ### Added
 
+- Build and test toolchain moved to Vite 8, Vitest 5, plugin-react 6 and esbuild 0.28; all
+  Dependabot alerts on the old test toolchain are closed. Tests for the UI handlers that Vitest 5's
+  stricter coverage measurement showed as untested; the thresholds stay at 99/99/97/95.
 - Linting of Markdown (`markdownlint-cli2`) and YAML (`scripts/lint-yaml.mjs`) in `npm run check`,
   the pre-commit hook and CI; prose lines are limited to 100 columns.
+- Security: only the app's own two pages count as trusted frames and allowed navigation (any other
+  local `file:` address did before); the log redacts links and credentials in message texts and is
+  readable by the user only.
 - Menu "About Diya": version, repository link, the "not affiliated" notice.
 - Releases carry `SHA256SUMS.txt` and a signed build attestation (`gh attestation verify`).
 

@@ -4,8 +4,9 @@
  */
 export const FEATURES: { publicLinks: boolean } = {
   /**
-   * Creating new public links (publish). OFF until Task 24 (confirmation for folders, list of
-   * published items). Existing links stay visible and can still be revoked (unpublish).
+   * Creating new public links (publish). OFF until publishing a folder asks for confirmation
+   * (it exposes everything inside) and the published items can be listed. Existing links stay
+   * visible and can still be revoked (unpublish).
    */
   publicLinks: false,
 };

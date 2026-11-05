@@ -7,7 +7,7 @@
 import { FEATURES } from '../../shared/features.js';
 import { useBrowserStore } from '../store/browserStore.js';
 import { dialogs } from '../store/dialogStore.js';
-import { baseName, isDir, nameProblem, type Entry } from './entries.js';
+import { isDir, nameProblem, type Entry } from './entries.js';
 import { t } from './strings.js';
 
 const browser = (): ReturnType<typeof useBrowserStore.getState> => useBrowserStore.getState();
@@ -132,5 +132,3 @@ export async function restoreEntryAs(entry: Entry): Promise<void> {
   });
   if (name) await browser().restoreEntries([entry.path], name.trim());
 }
-
-export const displayName = (path: string): string => baseName(path) || t.disk;

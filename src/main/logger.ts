@@ -6,7 +6,16 @@
  *
  * @module logger
  */
-import { createWriteStream, mkdirSync, renameSync, statSync, type WriteStream } from 'fs';
+import {
+  chmodSync,
+  closeSync,
+  createWriteStream,
+  mkdirSync,
+  openSync,
+  renameSync,
+  statSync,
+  type WriteStream,
+} from 'fs';
 import * as path from 'path';
 
 import { LEVEL_ORDER, type LogCategory, type LogEntry, type LogLevel } from '../shared/log.js';
@@ -16,6 +25,10 @@ const MAX_DATA_CHARS = 4000;
 /** Size limit of the log file; exported so that tests can shrink it. */
 export const logTuning = { maxFileBytes: 5 * 1024 * 1024 };
 const SECRET_KEY = /token|authorization|password|secret|cookie|signature/i;
+/** Credentials that can end up inside a free-text message (an error text, a header dump). */
+const AUTH_SCHEME = /\b(OAuth|Bearer)\s+[\w.~+/=-]+/gi;
+const SECRET_PAIR =
+  /\b(access_token|refresh_token|client_secret|token|code|sign|signature)=[^&\s]+/gi;
 
 /** Hide the query string of any non-API URL (upload/download links carry signed tokens). */
 export function redactUrl(url: string): string {
@@ -26,6 +39,14 @@ export function redactUrl(url: string): string {
   } catch {
     return url;
   }
+}
+
+/** A message with its links reduced (no signed query) and its credentials masked. */
+export function redactText(msg: string): string {
+  return msg
+    .replace(/https?:\/\/[^\s"'<>)]+/g, redactUrl)
+    .replace(AUTH_SCHEME, '$1 ***')
+    .replace(SECRET_PAIR, '$1=***');
 }
 
 /** JSON-safe copy with secrets masked and the size capped. */
@@ -75,7 +96,7 @@ class Logger {
       ts: Date.now(),
       level,
       cat,
-      msg,
+      msg: redactText(msg),
       ...(data === undefined ? {} : { data: sanitize(data) }),
     };
     this.entries.push(entry);
@@ -145,7 +166,14 @@ class Logger {
   }
 
   private openStream(file: string): void {
-    this.stream = createWriteStream(file, { flags: 'a' });
+    // The log holds file names and paths: create it for the user only, also if it already existed.
+    try {
+      closeSync(openSync(file, 'a', 0o600));
+      chmodSync(file, 0o600);
+    } catch {
+      // the stream below reports nothing either: logging must never break the app
+    }
+    this.stream = createWriteStream(file, { flags: 'a', mode: 0o600 });
     this.stream.on('error', () => {
       this.stream = null; // never let logging break the app
     });
@@ -153,7 +181,7 @@ class Logger {
 
   /** Also write entries (JSON lines) to `<dir>/diya.log`; a file over 5 MB is moved aside. */
   attachFile(dir: string): string {
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
     const file = path.join(dir, 'diya.log');
     try {
       if (statSync(file).size > logTuning.maxFileBytes) renameSync(file, `${file}.1`);

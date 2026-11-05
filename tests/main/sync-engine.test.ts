@@ -589,6 +589,19 @@ describe('SyncEngine', () => {
   describe('damaged transfer must not start a conflict chain', () => {
     const copies = (): string[] => readdirSync(localDir).filter(n => n.includes('conflict'));
 
+    it('a damaged upload is reported even if removing the bad copy fails as well', async () => {
+      write('bad.txt', 'a\n', 1000);
+      remote.upload = async (_l, r, _o, cb) => {
+        remote.put(r, '');
+        cb(0, 2);
+      };
+      remote.remove = async () => {
+        throw new Error('503: busy');
+      };
+      await engine.syncNow();
+      expect(engine.getProgress().failures[0]).toContain('Upload verification failed');
+    });
+
     it('an upload that arrives truncated is rejected, removed, and retried — never turned into copies', async () => {
       write('asdf.txt', 'a\n', 1000);
       const realUpload = remote.upload.bind(remote);
@@ -711,6 +724,16 @@ describe('SyncEngine', () => {
       };
       await Promise.all([engine.syncNow(), engine.syncNow(), engine.syncNow()]);
       expect(maxActive).toBe(1);
+    });
+
+    it('stopping while a retry of an unsettled file is waiting cancels that retry', async () => {
+      const e = make({ settleMs: 60_000 });
+      write('fresh.txt', 'fresh');
+      e.start();
+      await e.syncNow();
+      e.stop();
+      await new Promise(r => setTimeout(r, 50));
+      expect(remote.files.has('/Sync/fresh.txt')).toBe(false);
     });
 
     it('files still being written are retried by themselves after the settle time', async () => {
@@ -994,6 +1017,21 @@ describe('SyncEngine', () => {
         await e.syncNow();
         expect(stats).toBe(25);
       });
+    });
+
+    it('a folder found on both sides without a record is adopted, and left alone when its files vanish', async () => {
+      const e = makeRoot();
+      await e.syncNow(); // the first run walks the tree (empty)
+      remote.put('/d/x.txt', 'same');
+      mkdirSync(inRoot('d'));
+      writeFileSync(inRoot('d/x.txt'), 'same');
+      await e.syncNow();
+      expect(db.getSyncStates(db.getPairs().at(-1)!.id).get('d')?.isDir).toBe(true);
+      await remote.remove('/d');
+      await e.syncNow();
+      expect(existsSync(inRoot('d'))).toBe(true); // the folder waits for the next full scan
+      await e.syncNow({ immediate: true }); // a full scan decides
+      expect(existsSync(inRoot('d'))).toBe(false);
     });
 
     it('a file missing from the flat list is deleted locally only after the Disk confirms it is gone', async () => {

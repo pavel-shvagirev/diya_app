@@ -68,7 +68,7 @@ function ConfirmDialog({ d, done }: { d: Of<'confirm'>; done: () => void }): Rea
           </button>
           <button
             autoFocus
-            className={d.danger ? 'btn btn--primary' : 'btn btn--primary'}
+            className="btn btn--primary"
             style={d.danger ? { background: 'var(--ui-danger)' } : undefined}
             onClick={() => close(true)}
           >

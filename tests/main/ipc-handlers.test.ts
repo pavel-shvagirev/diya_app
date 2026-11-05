@@ -28,6 +28,7 @@ vi.mock('electron', () => ({
 vi.mock('../../src/main/transfer.js', () => ({ uploadFile, downloadFile }));
 
 import { CH, EVENTS } from '../../src/shared/channels.js';
+import { FEATURES } from '../../src/shared/features.js';
 import { getHandlerCount, registerIpcHandlers } from '../../src/main/ipc-handlers.js';
 
 function makeClient() {
@@ -160,9 +161,17 @@ describe('IPC handlers', () => {
     await call(CH.FILES_COPY, '/a', '/b');
     await call(CH.FILES_MOVE, '/a', '/c');
     await call(CH.FILES_MKDIR, '/n');
-    // Creating public links is switched off (Task 24): refused in the main process, not just hidden.
+    // Creating public links is switched off (FEATURES.publicLinks): refused in the main process.
     await expect(call(CH.FILES_PUBLISH, '/a')).rejects.toThrow(/disabled/i);
     expect(c.publish).not.toHaveBeenCalled();
+    // With the switch on the handler validates the path and returns the link.
+    FEATURES.publicLinks = true;
+    try {
+      expect(await call(CH.FILES_PUBLISH, '/a')).toBe('https://yadi.sk/d/1');
+      await expect(call(CH.FILES_PUBLISH, 'relative')).rejects.toThrow();
+    } finally {
+      FEATURES.publicLinks = false;
+    }
     // …while revoking an existing link keeps working.
     await call(CH.FILES_UNPUBLISH, '/a');
     expect(c.unpublish).toHaveBeenCalledWith('/a');
@@ -532,6 +541,9 @@ describe('IPC handlers', () => {
       registerIpcHandlers(win, makeClient() as never, db as never, e as never);
       expect(() => call(CH.SYNC_START)).toThrow('Choose a sync folder');
       await call(CH.SYNC_CONFIGURE, dirIn('S'), '/R');
+      await call(CH.SYNC_PAUSE);
+      await call(CH.SYNC_START); // resumes what was paused
+      expect(db.togglePairActive).toHaveBeenLastCalledWith('p1', true);
       await call(CH.SYNC_PAUSE);
       expect(db.togglePairActive).toHaveBeenCalledWith('p1', false);
       expect(e.stop).toHaveBeenCalled();

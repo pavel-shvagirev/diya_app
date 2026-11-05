@@ -51,7 +51,8 @@ Unofficial desktop client for [Yandex Disk](https://disk.yandex.com/): a compact
 
 ## Install
 
-Download the file for your system from the [Releases](../../releases) page.
+Download the file for your system from the
+[Releases](https://github.com/pavel-shvagirev/diya_app/releases) page.
 
 | System  | File                                                                 | Notes                                                                                                                                                                               |
 | ------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -182,7 +183,8 @@ is not covered by the MIT license ([assets/brand/NOTICE.md](assets/brand/NOTICE.
 
 - One sync pair.
 - No automatic updates: the app never looks for a new version. Download it from
-  [Releases](../../releases) and install it over the old one (settings and sync state are kept).
+  [Releases](https://github.com/pavel-shvagirev/diya_app/releases) and install it over the old one
+  (settings and sync state are kept).
 
 ## License
 

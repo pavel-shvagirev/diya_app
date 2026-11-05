@@ -1,6 +1,7 @@
 import ts from '@typescript-eslint/parser';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 import importPlugin from 'eslint-plugin-import';
+import reactHooks from 'eslint-plugin-react-hooks';
 
 export default [
   {
@@ -20,11 +21,15 @@ export default [
     plugins: {
       '@typescript-eslint': tsPlugin,
       import: importPlugin,
+      'react-hooks': reactHooks,
     },
     rules: {
       ...tsPlugin.configs['recommended-type-checked'].rules,
-      // These are scaffolding files — unsafe-any on CH constants
-      // will be fixed when full type pipeline is in place (Task 4)
+      // Hooks: the order of calls and the dependency lists of effects decide what the UI shows.
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'error',
+      // IPC payloads and the Electron/Node typings reach `any` in a few places; the handlers
+      // validate their input instead (src/shared/validation.ts).
       '@typescript-eslint/no-unsafe-argument': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-return': 'off',

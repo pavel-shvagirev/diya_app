@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
@@ -23,6 +27,7 @@ vi.mock('../../src/main/security.js', async () => ({
       focus: vi.fn(),
       loadFile: vi.fn(),
       loadURL: vi.fn(),
+      setTitle: vi.fn(),
       isDestroyed: () => win.destroyed,
       isMinimized: () => win.minimized,
       on: (ev: string, cb: () => void) => (listeners[ev] = cb),
@@ -34,7 +39,7 @@ vi.mock('../../src/main/security.js', async () => ({
   },
 }));
 
-import { openLogWindow, registerLogIpc } from '../../src/main/log-window.js';
+import { openLogWindow, registerLogIpc, relocalizeLogWindow } from '../../src/main/log-window.js';
 import { logger } from '../../src/main/logger.js';
 import { CH, EVENTS } from '../../src/shared/channels.js';
 
@@ -89,9 +94,19 @@ describe('log window IPC', () => {
   });
 
   it('reveal opens the file manager only when a file exists', () => {
+    h.showItemInFolder.mockClear();
+    logger.close();
     call(CH.LOG_REVEAL);
-    const file = logger.getFilePath();
-    expect(h.showItemInFolder).toHaveBeenCalledTimes(file ? 1 : 0);
+    expect(h.showItemInFolder).not.toHaveBeenCalled();
+    const dir = mkdtempSync(join(tmpdir(), 'logreveal-'));
+    try {
+      const file = logger.attachFile(dir);
+      call(CH.LOG_REVEAL);
+      expect(h.showItemInFolder).toHaveBeenCalledWith(file);
+    } finally {
+      logger.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -139,6 +154,20 @@ describe('openLogWindow', () => {
     expect((h.wins[1] as any).loadURL).toHaveBeenCalledWith(
       expect.stringMatching(/^http:\/\/localhost:5173\/log\.html\?lang=(ru|en)$/)
     ); // eslint-disable-line @typescript-eslint/no-explicit-any
+  });
+
+  it('a language change retitles the open window and loads its page again', () => {
+    relocalizeLogWindow(); // no window: nothing happens
+    openLogWindow();
+    const w = h.wins.at(-1) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    w.loadFile.mockClear();
+    relocalizeLogWindow();
+    expect(w.setTitle).toHaveBeenCalledWith(expect.stringContaining('Diya'));
+    expect(w.loadFile).toHaveBeenCalledTimes(1);
+    w.destroyed = true;
+    w.setTitle.mockClear();
+    relocalizeLogWindow(); // a destroyed window is left alone
+    expect(w.setTitle).not.toHaveBeenCalled();
   });
 
   it('does not send to a destroyed window', () => {

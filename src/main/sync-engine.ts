@@ -170,10 +170,9 @@ function md5File(file: string): Promise<string> {
   });
 }
 
-function directionOf(op: Op): 'upload' | 'download' | 'delete' {
-  if (op.kind === 'upload') return 'upload';
-  if (op.kind === 'deleteLocal' || op.kind === 'deleteRemote') return 'delete';
-  return 'download';
+/** Which way bytes flow for an operation that reports transfer progress (deletions do not). */
+function directionOf(op: Op): 'upload' | 'download' {
+  return op.kind === 'upload' ? 'upload' : 'download';
 }
 
 const toPosix = (p: string): string => p.split(path.sep).join('/');

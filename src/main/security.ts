@@ -30,14 +30,21 @@ export const safeStorage = {
   },
 };
 
-/** Pages the app itself may show: its own files, and the dev server while developing. */
+/** The only two pages the app loads from its own files (`dist/renderer/`). */
+const APP_PAGE = /\/renderer\/(?:index|log)\.html$/;
+
+/**
+ * Pages the app itself may show: its own two pages, and the dev server while developing. A
+ * `file:` address counts only if it is one of those pages, so a frame that somehow got to another
+ * local file is neither allowed to navigate there nor trusted by the IPC handlers.
+ */
 export function isAllowedNavigation(
   url: string,
   devServerUrl = process.env.VITE_DEV_SERVER_URL
 ): boolean {
   try {
     const target = new URL(url);
-    if (target.protocol === 'file:') return true;
+    if (target.protocol === 'file:') return APP_PAGE.test(target.pathname);
     return Boolean(devServerUrl) && target.origin === new URL(devServerUrl as string).origin;
   } catch {
     return false;

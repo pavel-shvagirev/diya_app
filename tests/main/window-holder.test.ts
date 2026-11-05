@@ -53,6 +53,16 @@ const setup = () => {
 };
 
 describe('window holder (tray must survive a closed window)', () => {
+  it('send() reaches an open window and is silent without one or when it is destroyed', () => {
+    const { holder, made } = setup();
+    expect(() => holder.send('x')).not.toThrow(); // nothing open: nothing happens
+    holder.show();
+    holder.send('ping', 1);
+    expect(made[0]!.sent).toEqual([['ping', 1]]);
+    made[0]!.destroy();
+    expect(() => holder.send('late')).not.toThrow();
+  });
+
   it('show() creates the window on first use and wires it', () => {
     const { holder, made, onCreated } = setup();
     holder.show();

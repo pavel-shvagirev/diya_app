@@ -9,8 +9,8 @@ updates:
       # Major jumps need a planned migration (peer ranges, Electron's Node, config), not a bot PR.
       - dependency-name: '*'
         update-types: ['version-update:semver-major']
-      # 0.x: every minor is a breaking change, so the rule above does not catch it. Vite 5 pins
-      # its own esbuild 0.21; ours only bundles the preload script.
+      # 0.x: every minor is a breaking change, so the rule above does not catch it. esbuild only
+      # bundles the preload script (Vite 8 has its own bundler): bump it by hand.
       - dependency-name: esbuild
         update-types: ['version-update:semver-minor']
     groups:

@@ -330,6 +330,26 @@ describe('Toolbar', () => {
     expect(new Set(icons).size).toBe(icons.length); // no two buttons look the same
   });
 
+  it('each trash action does what its label says', async () => {
+    api.getTrashList.mockResolvedValue(list([file('a.txt', { path: '/a.txt' })]));
+    api.restoreFromTrash.mockResolvedValue(undefined);
+    await useBrowserStore.getState().openTrash();
+    render(<Toolbar />);
+    const click = (label: string): void =>
+      fireEvent.click(screen.getByText(label).closest('button') as HTMLElement);
+    act(() => useBrowserStore.getState().select('/a.txt', 'replace'));
+    // these ask first (a dialog); nothing is deleted or renamed behind the user's back
+    for (const label of [t.restoreAs, t.deleteForever, t.emptyTrash]) {
+      click(label);
+      act(() => useDialogStore.getState().close());
+    }
+    await act(async () => undefined);
+    expect(api.deleteFromTrash).not.toHaveBeenCalled();
+    expect(api.restoreFromTrash).not.toHaveBeenCalled();
+    click(t.restore);
+    await waitFor(() => expect(api.restoreFromTrash).toHaveBeenCalledWith('/a.txt'));
+  });
+
   it('trash view swaps the actions', async () => {
     await useBrowserStore.getState().openTrash();
     render(<Toolbar />);

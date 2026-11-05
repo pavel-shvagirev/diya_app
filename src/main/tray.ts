@@ -3,10 +3,14 @@
  *
  * @module tray
  */
-/* eslint-disable import/order */
-import type { BrowserWindow, Tray as ElectronTrayType } from 'electron';
-import { Tray, Menu, Notification, ipcMain } from 'electron';
-/* eslint-enable import/order */
+import {
+  Tray,
+  Menu,
+  Notification,
+  ipcMain,
+  type BrowserWindow,
+  type Tray as ElectronTrayType,
+} from 'electron';
 
 import { CH } from '../shared/channels.js';
 import { menuStrings } from './menu-strings.js';

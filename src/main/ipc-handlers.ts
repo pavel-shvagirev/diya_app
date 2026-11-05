@@ -31,9 +31,6 @@ import type { SyncEngine } from './sync-engine.js';
 import type { YandexDiskClient } from './yandex-api.js';
 import type { FileMetadata, SyncConfig, SyncState, TransferEvent } from '../shared/types.js';
 
-export { CH };
-export type IpcChannel = string;
-
 const PROGRESS_THROTTLE_MS = 100;
 let transferSeq = 0;
 let unsubscribeSync: (() => void) | null = null;
@@ -212,7 +209,7 @@ export function registerIpcHandlers(
     return changesDisk(needClient().mkdir(p));
   });
   reg(CH.FILES_PUBLISH, async (_e, p: string) => {
-    // Switched off until Task 24; refuse here too so a compromised renderer cannot publish.
+    // Switched off (see FEATURES.publicLinks); refuse here too so a compromised renderer cannot publish.
     if (!FEATURES.publicLinks) throw new Error('Public links are disabled');
     validateRemotePath(p);
     return (await needClient().publish(p)).public_url;

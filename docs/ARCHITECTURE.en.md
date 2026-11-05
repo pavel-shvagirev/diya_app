@@ -151,7 +151,10 @@ host (`oauth.yandex.ru` / `.com`); HTTPS-only allow-listed external links; sessi
 the OS keystore; a function with a known problem is switched off in `src/shared/features.ts` and
 refused in the main process, not just hidden in the UI.
 
-Also: every IPC handler checks that the message comes from one of our own pages (`isTrustedSender`);
+Also: every IPC handler checks that the message comes from one of our own pages (`isTrustedSender`:
+the app's `index.html` / `log.html` or the dev server, not any other `file:` address, and the same
+rule guards navigation); the log (`logger.ts`) redacts links and credentials in message texts too and
+is created readable by the user only;
 all permission requests are denied; the sync folder is refused when it is the whole disk, the home
 folder, a system folder or overlaps the app data (`sync-folder.ts`); symbolic links are never
 followed (upload, sync scan); upload/download links must be https; without a real OS keyring (Linux
@@ -167,6 +170,11 @@ shape.
 `npm test` (Vitest, happy-dom). Main-process modules are tested with injected dependencies; the
 transfer layer additionally against a real local HTTP server; renderer stores and components with
 Testing Library. API response shapes in tests come from the official documentation.
+
+Coverage is measured by Vitest's v8 provider (thresholds in `vitest.config.ts`: 99 % of
+statements and lines, 97 % of functions, 95 % of branches). The measurement is AST-aware: the body
+of an arrow function that no test calls (a click handler in JSX) counts as uncovered, so every
+handler needs a test that triggers it. Thresholds are raised with the tests, never lowered.
 
 `npm run e2e` (`e2e/smoke.cjs`) starts the real app against an in-memory Disk
 (`e2e/fake-disk.cjs`) with a throw-away profile and checks sign-in, browsing, create/delete/restore,

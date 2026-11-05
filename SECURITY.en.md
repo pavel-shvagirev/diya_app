@@ -8,12 +8,19 @@ Please **do not** open a public issue. Use GitHub's private vulnerability report
 ("Security" tab → "Report a vulnerability") on this repository. Include the version, the
 operating system, and steps to reproduce.
 
+## Supported versions
+
+Only the latest release gets fixes. Reports are handled on a best-effort basis; no response time
+is promised.
+
 ## Scope and design
 
 - The renderer runs sandboxed with context isolation and no Node access; it talks to the main
   process only through the typed `window.api` bridge, and every IPC handler validates its input.
 - The OAuth session is stored encrypted with the operating-system keystore (Electron
-  `safeStorage`); tokens and signed links are redacted from logs.
+  `safeStorage`); tokens, signed links and credentials written into a message are redacted from
+  logs, and the log folder and file are readable by the user only. Log lines still hold file names
+  and paths (always at the `trace` level: whole Disk answers), so do not post a log unread.
 - The access token is sent only to `https://cloud-api.yandex.net`; the application's client
   secret and the refresh token only to `https://oauth.yandex.ru` / `.com`. The secret and the
   session are stored encrypted (`client-secret.bin`, `token.bin`). Nothing is sent anywhere else:

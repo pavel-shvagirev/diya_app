@@ -1,4 +1,5 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import App from '../../src/renderer/src/App.js';
@@ -55,6 +56,46 @@ describe('App', () => {
     render(<App />);
     expect(await screen.findByText('hello.txt')).toBeInTheDocument();
     expect(api.listFiles).toHaveBeenCalledWith('/');
+  });
+
+  it('starts once even when React runs the effects twice (Strict Mode)', async () => {
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>
+    );
+    await screen.findByText('hello.txt');
+    expect(api.listFiles.mock.calls.filter(c => c[0] === '/')).toHaveLength(1);
+  });
+
+  it('the splitter follows the pointer only while it is held', async () => {
+    render(<App />);
+    await screen.findByText('hello.txt');
+    const bar = screen.getByRole('separator');
+    (bar as HTMLElement & { setPointerCapture: (id: number) => void }).setPointerCapture = vi.fn();
+    const before = useUiStore.getState().treeWidth;
+    fireEvent.pointerMove(bar, { clientX: 333 });
+    expect(useUiStore.getState().treeWidth).toBe(before);
+    fireEvent.pointerDown(bar, { pointerId: 1 });
+    fireEvent.pointerMove(bar, { clientX: 333 });
+    expect(useUiStore.getState().treeWidth).toBe(333);
+    fireEvent.pointerUp(bar);
+    fireEvent.pointerMove(bar, { clientX: 400 });
+    expect(useUiStore.getState().treeWidth).toBe(333);
+  });
+
+  it('while offline the banner offers a retry that reads the folder again', async () => {
+    render(<App />);
+    await screen.findByText('hello.txt');
+    act(() => {
+      window.dispatchEvent(new Event('offline'));
+    });
+    api.listFiles.mockClear();
+    fireEvent.click(await screen.findByText(t.retry));
+    await waitFor(() => expect(api.listFiles).toHaveBeenCalledWith('/'));
+    act(() => {
+      window.dispatchEvent(new Event('online'));
+    });
   });
 
   it('shows the sign-in screen when signed out, and switches when the session changes', async () => {

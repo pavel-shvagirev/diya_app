@@ -4,7 +4,12 @@ const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
 import { YandexApiError, errorStatus } from '../../src/main/api-error.js';
-import { YandexDiskClient, isApiUrl, normalizePath } from '../../src/main/yandex-api.js';
+import {
+  YandexDiskClient,
+  isApiUrl,
+  isOperationUrl,
+  normalizePath,
+} from '../../src/main/yandex-api.js';
 
 const BASE = 'https://cloud-api.yandex.net/v1/disk';
 
@@ -134,6 +139,19 @@ describe('YandexDiskClient', () => {
       await expect(client.copyFile('/a', '/b')).rejects.toThrow(/untrusted/i);
       expect(mockFetch).toHaveBeenCalledTimes(1);
     }
+  });
+
+  it('a link that is not an address at all is not an operation link', () => {
+    expect(isOperationUrl('not a url')).toBe(false);
+    expect(isOperationUrl('/v1/disk/operations/1')).toBe(false);
+  });
+
+  it('a listing whose total is larger than what the Disk returns stops at the first empty page', async () => {
+    mockFetch.mockReset();
+    mockFetch.mockResolvedValue(res(200, { _embedded: { items: [], total: 5 } }));
+    const list = await client.listFiles('/');
+    expect(list.items).toEqual([]);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it('rejects when the 202 operation fails', async () => {

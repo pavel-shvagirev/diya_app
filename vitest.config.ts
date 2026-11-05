@@ -14,7 +14,9 @@ export default defineConfig({
       reporter: ['text', 'json', 'html'],
       include: ['src/**/*.{ts,tsx}'],
       // Fails the run if coverage drops; raise when tests are added, never lower to pass.
-      thresholds: { statements: 99, lines: 99, functions: 92, branches: 95 },
+      // Vitest 5 measures AST-aware: the body of an arrow function that no test calls (a click
+      // handler in JSX) counts as uncovered. Handlers have tests of their own for that reason.
+      thresholds: { statements: 99, lines: 99, functions: 97, branches: 95 },
       exclude: [
         'src/**/*.d.ts',
         // Process bootstrap and window glue: verified by launching the packaged app, not by unit tests.
@@ -26,8 +28,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@shared': path.resolve(__dirname, 'src/shared'),
-      '@renderer': path.resolve(__dirname, 'src/renderer'),
+      '@shared': path.resolve(import.meta.dirname, 'src/shared'),
+      '@renderer': path.resolve(import.meta.dirname, 'src/renderer'),
     },
   },
 });

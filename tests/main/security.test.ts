@@ -110,8 +110,12 @@ describe('IPC sender check', () => {
   it('trusted() runs the handler for a trusted sender and throws for others', () => {
     const fn = vi.fn().mockReturnValue(7);
     const wrapped = trusted(fn);
-    expect(wrapped({ senderFrame: { url: 'file:///x/index.html' } }, 1, 2)).toBe(7);
-    expect(fn).toHaveBeenCalledWith({ senderFrame: { url: 'file:///x/index.html' } }, 1, 2);
+    expect(wrapped({ senderFrame: { url: 'file:///x/renderer/index.html' } }, 1, 2)).toBe(7);
+    expect(fn).toHaveBeenCalledWith(
+      { senderFrame: { url: 'file:///x/renderer/index.html' } },
+      1,
+      2
+    );
     expect(() => wrapped({ senderFrame: { url: 'https://evil.example/' } }, 1)).toThrow(
       'Untrusted IPC sender'
     );
@@ -121,8 +125,19 @@ describe('IPC sender check', () => {
 
 describe('isAllowedNavigation', () => {
   it("allows the app's own files only", () => {
-    expect(isAllowedNavigation('file:///app/index.html', undefined)).toBe(true);
+    for (const ok of [
+      'file:///app/dist/renderer/index.html?lang=en',
+      'file:///app/dist/renderer/log.html',
+      'file:///C:/Users/u/AppData/Local/Programs/Diya/resources/app.asar/dist/renderer/index.html',
+    ])
+      expect(isAllowedNavigation(ok, undefined), ok).toBe(true);
     for (const bad of [
+      // any other file on the disk, even one that looks like a page, is not the app
+      'file:///etc/passwd',
+      'file:///tmp/evil.html',
+      'file:///app/dist/renderer/other.html',
+      'file:///app/dist/renderer/../../../tmp/evil.html',
+      'file:///tmp/renderer/index.html.txt',
       'https://oauth.yandex.com/device',
       'https://evil-yandex.net.attacker.example/',
       'http://localhost:5173/',
@@ -218,7 +233,7 @@ describe('initAppSecurity', () => {
     handlers['will-navigate']!(block, 'https://evil.example/');
     expect(block.preventDefault).toHaveBeenCalled();
     const ok = { preventDefault: vi.fn() };
-    handlers['will-navigate']!(ok, 'file:///app/index.html');
+    handlers['will-navigate']!(ok, 'file:///app/dist/renderer/index.html');
     expect(ok.preventDefault).not.toHaveBeenCalled();
   });
 
