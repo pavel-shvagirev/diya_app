@@ -220,6 +220,9 @@ export function registerIpcHandlers(
   });
   reg(CH.FILES_QUOTA, () => needClient().getDiskInfo());
 
+  /** A failure caught as `unknown`, as an Error (what a rejection should carry). */
+  const asError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)));
+
   // Run `fn` with throttled progress events; report the outcome either way.
   async function tracked(
     name: string,
@@ -278,7 +281,7 @@ export function registerIpcHandlers(
             });
           }
         } catch (err) {
-          await tracked(path.basename(local), 'upload', () => Promise.reject(err));
+          await tracked(path.basename(local), 'upload', () => Promise.reject(asError(err)));
           continue;
         }
         for (const file of plan.files) {
@@ -306,7 +309,7 @@ export function registerIpcHandlers(
       try {
         items = await collectRemoteFiles(client, rp, path.posix.basename(rp));
       } catch (err) {
-        await tracked(path.posix.basename(rp), 'download', () => Promise.reject(err));
+        await tracked(path.posix.basename(rp), 'download', () => Promise.reject(asError(err)));
         continue;
       }
       for (const item of items) {
