@@ -7,6 +7,9 @@ versions: [SemVer](https://semver.org/).
 
 ### Added
 
+- Start in the tray: when sync is set up and a session is saved, the app opens without a window
+  and shows a system notification (a click opens the window); otherwise the window opens as
+  before. On macOS the Dock icon is shown only while a window is open.
 - Build and test toolchain moved to Vite 8, Vitest 5, plugin-react 6 and esbuild 0.28; all
   Dependabot alerts on the old test toolchain are closed. Tests for the UI handlers that Vitest 5's
   stricter coverage measurement showed as untested; the thresholds stay at 99/99/97/95.

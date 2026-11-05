@@ -28,6 +28,10 @@ updates:
         update-types: ['version-update:semver-major']
       - dependency-name: typescript
         update-types: ['version-update:semver-major']
+      # eslint-plugin-import (latest 2.32) accepts ESLint up to 9: 10 fails npm ci with ERESOLVE.
+      # Lift this once the plugin declares support for 10.
+      - dependency-name: eslint
+        versions: ['10.x']
       # 0.x: every minor is a breaking change, so the rule above does not catch it. esbuild only
       # bundles the preload script (Vite 8 has its own bundler): bump it by hand.
       - dependency-name: esbuild

@@ -67,14 +67,10 @@ function tooltip(state: TrayState): string {
 }
 
 /**
- * Create the tray. Calling it again (a window was re-created) replaces the
- * previous tray instead of leaving a second icon behind.
+ * Create the tray. Calling it again replaces the previous tray instead of leaving a second
+ * icon behind.
  */
-export function setupTrayMenu(
-  iconPath: string,
-  _mainWindow: BrowserWindow,
-  actions: TrayActions = {}
-): ElectronTray {
+export function setupTrayMenu(iconPath: string, actions: TrayActions = {}): ElectronTray {
   currentTray?.destroy();
   currentActions = actions;
   currentTray = new Tray(iconPath);
@@ -107,7 +103,7 @@ export function refreshTray(state: TrayState, sync: TraySyncInfo): void {
 export function showNotification(
   title: string,
   body: string,
-  options?: { icon?: string; silent?: boolean }
+  options?: { icon?: string; silent?: boolean; onClick?: () => void }
 ): void {
   if (Notification.isSupported()) {
     const notif = new Notification({
@@ -116,6 +112,7 @@ export function showNotification(
       silent: options?.silent ?? false,
       icon: options?.icon,
     });
+    if (options?.onClick) notif.on('click', options.onClick);
     notif.show();
   }
 }

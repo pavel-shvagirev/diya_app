@@ -47,15 +47,6 @@ import { menuStrings } from '../../src/main/menu-strings.js';
 
 const S = menuStrings('en'); // the electron mock has no app.getLocale(), so labels are English
 
-const mockWin = {
-  isMinimized: () => false,
-  restore: vi.fn(),
-  show: vi.fn(),
-  focus: vi.fn(),
-  close: vi.fn(),
-  webContents: { send: vi.fn() },
-} as unknown as Electron.BrowserWindow;
-
 type Item = { label?: string; type?: string; click?: () => void };
 const lastMenu = (): Item[] => _traySetContextMenu.mock.calls.at(-1)![0].template;
 const labels = (): string[] =>
@@ -74,14 +65,14 @@ describe('setupTrayMenu', () => {
   });
 
   it('creates a tray with tooltip, menu and double-click', () => {
-    const tray = setupTrayMenu('/icon.png', mockWin);
+    const tray = setupTrayMenu('/icon.png');
     expect(tray).toBeDefined();
     expect(_traySetToolTip).toHaveBeenCalledWith(S.tipIdle);
     expect(_trayOn).toHaveBeenCalledWith('double-click', expect.any(Function));
   });
 
   it('offers only real items: Open, a sync item, Settings, Quit', () => {
-    setupTrayMenu('/icon.png', mockWin);
+    setupTrayMenu('/icon.png');
     expect(labels()).toEqual([S.open, S.setupSync, S.settings, S.quit]);
   });
 
@@ -92,7 +83,7 @@ describe('setupTrayMenu', () => {
       openSettings: vi.fn(),
       quit: vi.fn(),
     };
-    const tray = setupTrayMenu('/icon.png', mockWin, actions);
+    const tray = setupTrayMenu('/icon.png', actions);
     click(S.open);
     expect(actions.showWindow).toHaveBeenCalled();
     click(S.settings);
@@ -116,8 +107,8 @@ describe('setupTrayMenu', () => {
   });
 
   it('calling setup again replaces the tray instead of leaving two icons', () => {
-    setupTrayMenu('/icon.png', mockWin);
-    setupTrayMenu('/icon.png', mockWin);
+    setupTrayMenu('/icon.png');
+    setupTrayMenu('/icon.png');
     expect(_trayDestroy).toHaveBeenCalledTimes(1);
   });
 });

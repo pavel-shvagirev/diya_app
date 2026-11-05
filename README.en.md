@@ -44,7 +44,10 @@ Unofficial desktop client for [Yandex Disk](https://disk.yandex.com/): a compact
 - **Log window** (`Ctrl/Cmd+Shift+L`): API calls, transfers and every sync decision with its
   reason; categories, verbosity, search. Tokens and signed links are never written to it; the
   `trace` level also records file names and paths, so do not share a log made at that level.
-- **Tray:** closing the window keeps sync running; quit with `Ctrl/Cmd+Q` pressed twice.
+- **Tray:** closing the window keeps sync running (on macOS the Dock icon goes away with the
+  window; click the tray icon to bring both back); quit with `Ctrl/Cmd+Q` pressed twice. If sync
+  is set up and you are signed in, the app starts in the tray without a window and shows a system
+  notification; otherwise it opens the window.
 - Light/dark theme follows the system. Interface language: English or Russian; it starts with the
   system language and can be fixed in Settings → Language (applies at once, no restart).
 - Public links: existing links are shown and can be revoked; creating new ones is disabled.
@@ -92,8 +95,8 @@ each start.
 
 ## Launch at login
 
-The app has no built-in option; add it to the system's startup list. It starts with its window
-open; closing the window keeps sync running from the tray.
+The app has no built-in option; add it to the system's startup list. With sync set up it starts
+in the tray (a notification says so); closing the window keeps sync running from the tray.
 
 - **macOS:** System Settings → General → Login Items & Extensions → **+** under "Open at Login" →
   choose `Diya` in Applications.

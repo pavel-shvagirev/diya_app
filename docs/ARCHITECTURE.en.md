@@ -39,9 +39,10 @@ Electron app, three processes of code:
   `debug` by default and is not stored in settings; turning on `trace` writes a warning into the log
   and the window shows a red banner.
 - **Windows and menus:** `window-holder.ts` (re-creates the main window on demand), `quit-guard.ts`
-  - `hint-window.ts` (double Cmd/Ctrl+Q), `tray.ts`, `app-menu.ts`, `about.ts` (About dialog),
-    `quit-key.ts` (the guarded Cmd/Ctrl+Q inside windows), `app-icon.ts` (window and Dock icon),
-    `menu-strings.ts`, `security.ts` (navigation guard, CSP, `safeStorage` wrapper).
+  - `hint-window.ts` (double Cmd/Ctrl+Q), `tray.ts`, `startup.ts` (start in the tray or with the
+    window; the macOS Dock icon exists only while a window is open), `app-menu.ts`, `about.ts`
+    (About dialog), `quit-key.ts` (the guarded Cmd/Ctrl+Q inside windows), `app-icon.ts` (window and
+    Dock icon), `menu-strings.ts`, `security.ts` (navigation guard, CSP, `safeStorage` wrapper).
 
 ## Sync
 
@@ -153,13 +154,12 @@ refused in the main process, not just hidden in the UI.
 
 Also: every IPC handler checks that the message comes from one of our own pages (`isTrustedSender`:
 the app's `index.html` / `log.html` or the dev server, not any other `file:` address, and the same
-rule guards navigation); the log (`logger.ts`) redacts links and credentials in message texts too and
-is created readable by the user only;
-all permission requests are denied; the sync folder is refused when it is the whole disk, the home
-folder, a system folder or overlaps the app data (`sync-folder.ts`); symbolic links are never
-followed (upload, sync scan); upload/download links must be https; without a real OS keyring (Linux
-`basic_text`) nothing is stored; packaged builds flip the Electron fuses (`runAsNode`,
-`NODE_OPTIONS`, `--inspect` off, asar-only, asar integrity).
+rule guards navigation); the log (`logger.ts`) redacts links and credentials in message texts too
+and is created readable by the user only; all permission requests are denied; the sync folder is
+refused when it is the whole disk, the home folder, a system folder or overlaps the app data
+(`sync-folder.ts`); symbolic links are never followed (upload, sync scan); upload/download links
+must be https; without a real OS keyring (Linux `basic_text`) nothing is stored; packaged builds
+flip the Electron fuses (`runAsNode`, `NODE_OPTIONS`, `--inspect` off, asar-only, asar integrity).
 
 ## Tests
 

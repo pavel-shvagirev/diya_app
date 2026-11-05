@@ -35,6 +35,7 @@ import { createQuitGuard } from './quit-guard.js';
 import { attachQuitKey } from './quit-key.js';
 import { YandexRemote } from './remote-storage.js';
 import { createSecureWindow, initAppSecurity, safeStorage } from './security.js';
+import { createDockVisibility, shouldStartInTray } from './startup.js';
 import { setSyncEnabled } from './sync-control.js';
 import { SyncDB } from './sync-db.js';
 import { SyncEngine } from './sync-engine.js';
@@ -44,6 +45,7 @@ import {
   refreshTray,
   registerTrayIpcHandlers,
   setupTrayMenu,
+  showNotification,
   type TrayState,
 } from './tray.js';
 import { createWindowHolder } from './window-holder.js';
@@ -58,9 +60,15 @@ configureNetwork();
 // The window may be closed (Cmd/Ctrl+W) while the app lives on in the tray, so nobody
 // keeps a BrowserWindow reference: everything goes through the holder, which re-creates it.
 const windows = createWindowHolder<BrowserWindow>({
-  create: () => createMainWindow(),
+  create: () => {
+    dock.show();
+    return createMainWindow();
+  },
   onCreated: win => wireWindowModules(win),
 });
+
+// macOS: the Dock icon is there only while a window is open; without windows the app is a tray icon.
+const dock = createDockVisibility(process.platform, app.dock);
 
 const quitKey = process.platform === 'darwin' ? '⌘Q' : 'Ctrl+Q';
 const quitGuard = createQuitGuard({
@@ -194,9 +202,13 @@ function wireWindowModules(win: BrowserWindow): void {
     [app.getPath('userData')]
   );
   registerTrayIpcHandlers(win);
+}
+
+/** The tray lives as long as the app, not as long as a window: it is also how a hidden start is reached. */
+function setupTray(): void {
   try {
     const iconPath = path.join(__dirname, '..', '..', 'assets', 'tray-icon.png');
-    setupTrayMenu(iconPath, win, { showWindow, toggleSync, openSettings, quit: quitNow });
+    setupTrayMenu(iconPath, { showWindow, toggleSync, openSettings, quit: quitNow });
     lastTrayKey = '';
     updateTray();
   } catch (err) {
@@ -204,6 +216,15 @@ function wireWindowModules(win: BrowserWindow): void {
     // works without a tray icon.
     logger.warn('app', 'tray setup failed', err);
   }
+}
+
+/** Native notification for a start without a window; a click on it opens the window. */
+function announceTrayStart(): void {
+  const s = menuStrings();
+  const syncing = Boolean(syncDb?.getPairs()[0]?.isActive);
+  showNotification(syncing ? s.startedSyncing : s.startedPaused, s.startedHint, {
+    onClick: showWindow,
+  });
 }
 
 // One fixed data folder in dev and in packaged builds (the default depends on productName);
@@ -318,8 +339,17 @@ void (gotLock ? app.whenReady() : Promise.resolve()).then(() => {
   );
   applyAppMenu();
   syncEngine?.onProgress(updateTray);
-  windows.show();
+  setupTray();
+  const inTray = shouldStartInTray({
+    configured: Boolean(syncDb?.getPairs()[0]),
+    signedIn: Boolean(saved),
+    trayReady: hasTray(),
+  });
+  logger.info('app', inTray ? 'starting in the tray' : 'starting with the window');
+  if (inTray) dock.hide();
+  else windows.show();
   startSyncIfConfigured();
+  if (inTray) announceTrayStart();
 });
 
 // Cmd/Ctrl+Q inside any window (main, log, hint) goes through the quit guard.
@@ -347,9 +377,10 @@ app.on('before-quit', event => {
 // Never block a system shutdown / logout with the confirmation.
 powerMonitor?.on?.('shutdown', () => quitGuard.force());
 
-// Closing the last window leaves the app in the tray (sync keeps running). Without a
-// tray there would be no way back, so quit then (except on macOS, which keeps the Dock icon).
+// Closing the last window leaves the app in the tray (sync keeps running) and takes the Dock icon
+// away. Without a tray there would be no way back, so quit then (except on macOS).
 app.on('window-all-closed', () => {
+  dock.hide();
   if (!hasTray() && process.platform !== 'darwin') quitNow();
 });
 
