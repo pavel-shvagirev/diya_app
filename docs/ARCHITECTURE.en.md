@@ -83,6 +83,18 @@ through: a file that is only _missing_ from a flat list is deleted locally only 
 responds with 404. Any other failure of the flat list ends the run. A sync folder other than `/`
 always walks its folders.
 
+**Revision.** `GET /v1/disk/` carries a `revision` (today a Unix time in microseconds; the field
+is not in the published reference). A flat run reads it first, one request. If it is the number
+seen just before the last flat list, nothing on the Disk changed since and the list is not read
+again: the run works from the remembered list (the checks above, the timer walk and "sync now" are
+unaffected). The remembered list is dropped, and the next run reads a fresh one, whenever this
+engine writes to the Disk itself (upload, delete, new folder; our own write moves the revision too
+and says nothing about other clients), after a walk, after a change made through the file manager,
+when a file in the list has no md5 yet, and whenever the revision is missing, fails to arrive or is
+not a positive whole number (a warning is logged once). The revision is read before the list, so a
+change made by another client while the list is being read is seen at the next run. It does not
+move when an empty folder is created, so those are still found by the walk only.
+
 **Folders.** A folder seen on both sides at a run is recorded in `sync_state`. A recorded folder
 that is missing on one side was deleted there, and the deletion is carried to the other side (the
 Disk trash, or the system trash), deepest folder last, but only if nothing is left inside that was
@@ -119,11 +131,11 @@ not a claim that it is the best design.
   delete over half of the known files is refused.
 
 Costs, accepted for now: a change is noticed at the next run, so up to a minute (the 60 s timer;
-local file events shorten it for local changes) plus the length of the run; a folder deleted on
-the Disk that is empty is noticed by its own `stat`, one that held files by the files vanishing
-from the list; a run reads the whole flat list even if little changed. Moving to a change
-feed with a persistent cursor and file-system events is possible later, behind the same plan
-step, once the comparison has been proven on real data; the comparison would stay as the
+local file events shorten it for local changes) plus the length of the run; a folder deleted on the
+Disk that is empty is noticed by its own `stat`, one that held files by the files vanishing from the
+list; a run reads the whole flat list when the Disk reports a change, even if little changed. Moving
+to a change feed with a persistent cursor and file-system events is possible later, behind the same
+plan step, once the comparison has been proven on real data; the comparison would stay as the
 periodic check that repairs a lost cursor.
 
 ## Reliability of the API layer

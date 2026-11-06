@@ -45,6 +45,11 @@ export interface RemoteStorage {
    * engine always walks the folders.
    */
   listAllFiles?(signal?: AbortSignal): Promise<RemoteEntry[]>;
+  /**
+   * A number that moves when files on the Disk change, or undefined when the Disk reports none
+   * (or none that makes sense). Optional: without it the flat list is read on every flat run.
+   */
+  revision?(signal?: AbortSignal): Promise<number | undefined>;
   stat(remotePath: string, signal?: AbortSignal): Promise<RemoteEntry>;
   mkdir(remotePath: string, signal?: AbortSignal): Promise<void>;
   upload(
@@ -269,6 +274,7 @@ export class SyncEngine {
   /** The Disk was changed from outside the engine (the file manager): read the whole tree next. */
   invalidateRemote(): void {
     this.fullNext = true;
+    this.flatCache = undefined;
   }
 
   /** Point the engine at a pair. Stops any running schedule; does not start it. */
@@ -277,6 +283,7 @@ export class SyncEngine {
     this.pair = pair;
     this.retries.clear();
     this.lastFullScan = 0;
+    this.flatCache = undefined;
     this.knownDirs.clear();
     this.assumedDirs.clear();
     this.fullNext = false;
@@ -624,6 +631,7 @@ export class SyncEngine {
     }
     const entries = await this.scanTree(root, signal);
     this.lastFullScan = Date.now();
+    this.flatCache = undefined;
     this.fullNext = false;
     this.knownDirs = new Map([...entries].filter(([, e]) => e.isDir));
     this.assumedDirs = new Set();
@@ -641,8 +649,46 @@ export class SyncEngine {
     );
   }
 
-  private async scanFlat(signal: AbortSignal): Promise<Map<string, RemoteEntry>> {
+  /**
+   * The flat list as it was read, with the revision of the Disk read just before it. While the
+   * Disk reports that same revision, nothing changed there and the list is not read again.
+   * Dropped whenever we write to the Disk ourselves (the revision then moves for our own sake and
+   * says nothing about others), after a walk, and on any doubt: the next flat run reads it.
+   */
+  private flatCache: { revision: number; files: RemoteEntry[] } | undefined;
+
+  private async currentRevision(signal: AbortSignal): Promise<number | undefined> {
+    if (!this.remote.revision) return undefined;
+    try {
+      return await this.remote.revision(signal);
+    } catch (err) {
+      if (signal.aborted) throw err;
+      return undefined; // cannot tell: read the list
+    }
+  }
+
+  private async flatFiles(signal: AbortSignal): Promise<RemoteEntry[]> {
+    // Read BEFORE the list: a change made while the list is being read then shows up as a
+    // different revision at the next run, instead of being absorbed into the remembered one.
+    const revision = await this.currentRevision(signal);
+    if (revision !== undefined && this.flatCache?.revision === revision) {
+      logger.debug(
+        'sync',
+        `the Disk is at revision ${revision} as before: the file list is not read`
+      );
+      return this.flatCache.files;
+    }
+    this.flatCache = undefined;
     const files = (await this.remote.listAllFiles?.(signal)) ?? [];
+    // A file whose checksum the Disk has not computed yet is read again at the next run.
+    if (revision !== undefined && files.every(f => f.isDir || f.md5)) {
+      this.flatCache = { revision, files };
+    }
+    return files;
+  }
+
+  private async scanFlat(signal: AbortSignal): Promise<Map<string, RemoteEntry>> {
+    const files = await this.flatFiles(signal);
     const out = new Map<string, RemoteEntry>();
     for (const e of files) {
       const rel = e.path.slice(1);
@@ -1112,6 +1158,7 @@ export class SyncEngine {
         });
         return 0;
       case 'mkdirRemote':
+        this.flatCache = undefined;
         await this.remote.mkdir(rfull, signal);
         this.recordDir(pair, op.rel);
         this.knownDirs.set(op.rel, {
@@ -1125,6 +1172,7 @@ export class SyncEngine {
       case 'upload': {
         const existed = remote.has(op.rel);
         const l = local.get(op.rel) as LocalEntry;
+        this.flatCache = undefined;
         await this.remote.upload(full, rfull, existed, onProgress, signal);
         await this.recordUploaded(pair, op.rel, l, signal);
         return op.size;
@@ -1161,6 +1209,7 @@ export class SyncEngine {
         return op.size;
       }
       case 'deleteRemote':
+        this.flatCache = undefined;
         await this.remote.remove(rfull, signal);
         this.db.removeSyncState(pair.id, op.rel);
         this.knownDirs.delete(op.rel);

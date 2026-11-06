@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v0.2.5 (the version in package.json must match) to build installers for
+# Push a tag like v0.2.8 (the version in package.json must match) to build installers for
 # macOS arm64 (dmg, zip), Windows x64 and arm64 (nsis, portable) and Linux x64 and arm64
 # (AppImage, deb, rpm) and attach them to a draft GitHub release. See docs/RELEASING.en.md.
 on:

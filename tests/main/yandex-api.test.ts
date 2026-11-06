@@ -489,29 +489,81 @@ describe('request rate', () => {
   });
 });
 
-describe('disk info in the log', () => {
+describe('the revision of the Disk', () => {
   const base = { type: 'disk', total_space: 10, used_space: 5, trash_size: 1 };
-  const lines = () => logger.getEntries().filter(e => e.msg.startsWith('disk info'));
+  const said = (level: string) =>
+    logger.getEntries().filter(e => e.level === level && e.msg.startsWith('disk info'));
+  const fetchInfo = async (client: YandexDiskClient, body: unknown) => {
+    mockFetch.mockResolvedValue(res(200, body));
+    return client.getDiskInfo();
+  };
 
   beforeEach(() => {
     mockFetch.mockReset();
     logger.clear();
   });
 
-  it('records the revision of the Disk when the answer carries one', async () => {
-    mockFetch.mockResolvedValue(res(200, { ...base, revision: 1793900000123 }));
-    const info = await new YandexDiskClient('t').getDiskInfo();
+  it.each([
+    [1793900000123, 1793900000123],
+    ['1793900000123', 1793900000123],
+  ])('reads %j as %j', async (raw, parsed) => {
+    const info = await fetchInfo(new YandexDiskClient('t'), { ...base, revision: raw });
     expect(info.used_space).toBe(5);
-    expect(lines().map(l => l.msg)).toEqual(['disk info: revision 1793900000123']);
+    expect(info.revision).toBe(parsed);
+    expect(said('warn')).toEqual([]);
   });
 
-  it('says which fields it has when there is no revision, and only once', async () => {
-    mockFetch.mockResolvedValue(res(200, base));
+  it.each([
+    ['text', 'abc'],
+    ['an empty string', ''],
+    ['a fraction', 1.5],
+    ['a negative number', -3],
+    ['zero', 0],
+    ['a number too big to be exact', 2 ** 60],
+    ['an object', { v: 1 }],
+    ['null', null],
+    ['a list', [1]],
+  ])('%s is not a revision: none is returned and one warning says so', async (_why, raw) => {
     const client = new YandexDiskClient('t');
-    await client.getDiskInfo();
-    await client.getDiskInfo();
-    expect(lines().map(l => l.msg)).toEqual([
-      'disk info: no revision field (fields: type, total_space, used_space, trash_size)',
+    expect((await fetchInfo(client, { ...base, revision: raw })).revision).toBeUndefined();
+    expect((await fetchInfo(client, { ...base, revision: raw })).revision).toBeUndefined();
+    const warns = said('warn');
+    expect(warns).toHaveLength(1);
+    expect(warns[0]!.msg).toContain('cannot be parsed');
+  });
+
+  it('a field that is missing after it was present is warned about once; before, only noted', async () => {
+    const client = new YandexDiskClient('t');
+    await fetchInfo(client, base);
+    await fetchInfo(client, base);
+    expect(said('warn')).toEqual([]);
+    expect(said('debug').filter(e => e.msg.includes('no revision field'))).toHaveLength(1);
+
+    await fetchInfo(client, { ...base, revision: 5 });
+    await fetchInfo(client, base);
+    await fetchInfo(client, base);
+    const warns = said('warn');
+    expect(warns).toHaveLength(1);
+    expect(warns[0]!.msg).toContain("'revision' field is missing in API responses");
+  });
+
+  it('a revision that comes back is read again and may be warned about again later', async () => {
+    const client = new YandexDiskClient('t');
+    await fetchInfo(client, { ...base, revision: 5 });
+    await fetchInfo(client, { ...base, revision: 'x' });
+    expect((await fetchInfo(client, { ...base, revision: 6 })).revision).toBe(6);
+    await fetchInfo(client, { ...base, revision: 'y' });
+    expect(said('warn')).toHaveLength(2);
+  });
+
+  it('writes a value to the log only when it changed', async () => {
+    const client = new YandexDiskClient('t');
+    await fetchInfo(client, { ...base, revision: 5 });
+    await fetchInfo(client, { ...base, revision: 5 });
+    await fetchInfo(client, { ...base, revision: 6 });
+    expect(said('debug').map(e => e.msg)).toEqual([
+      'disk info: revision 5',
+      'disk info: revision 6',
     ]);
   });
 });

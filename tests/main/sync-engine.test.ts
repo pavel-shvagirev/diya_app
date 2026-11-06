@@ -77,8 +77,23 @@ class FakeRemote implements RemoteStorage {
     const under = (p: string): boolean => dirname(p) === dir && p !== '/';
     return [...this.dirs, ...this.files.keys()].filter(under).map(p => this.entry(p));
   }
+  /** The Disk's revision; undefined = the Disk reports none. `afterList` runs after each flat list. */
+  revisionValue: number | undefined = undefined;
+  failRevision = false;
+  revisionCalls = 0;
+  afterList: (() => void) | undefined;
+  async revision(_signal?: AbortSignal): Promise<number | undefined> {
+    this.revisionCalls++;
+    if (this.failRevision) throw new Error('503: down');
+    return this.revisionValue;
+  }
   async listAllFiles(_signal?: AbortSignal): Promise<RemoteEntry[]> {
     this.flatCalls++;
+    const out = this.flatList();
+    this.afterList?.();
+    return out;
+  }
+  private flatList(): RemoteEntry[] {
     if (this.failFlat) throw this.failFlat;
     return [...this.files.keys()].filter(p => !this.hiddenFromFlat.has(p)).map(p => this.entry(p));
   }
@@ -984,6 +999,168 @@ describe('SyncEngine', () => {
       await e.syncNow();
       expect(remote.mkdirCalls).toEqual([]);
       expect(e.getProgress().failures).toEqual([]);
+    });
+
+    describe('the revision of the Disk: nothing changed there, nothing is asked', () => {
+      /** An engine that has done its walk and one flat run, with the Disk at revision 10. */
+      const settled = async (opts: Parameters<typeof makeRoot>[0] = {}) => {
+        remote.put('/a.txt', 'a');
+        remote.revisionValue = 10;
+        const e = makeRoot(opts);
+        await e.syncNow(); // the first run walks the folders
+        await e.syncNow(); // the first flat run reads the list and remembers it
+        return e;
+      };
+
+      it('the same revision: the list is not read again, and the run still works', async () => {
+        const e = await settled();
+        resetCalls();
+        await e.syncNow();
+        await e.syncNow();
+        expect(remote.flatCalls).toBe(0);
+        expect(remote.listCalls).toEqual([]);
+        expect(existsSync(inRoot('a.txt'))).toBe(true);
+        expect(e.getProgress()).toMatchObject({ error: null, failures: [] });
+      });
+
+      it('local changes are still carried over while the Disk stands still', async () => {
+        const e = await settled();
+        resetCalls();
+        writeFileSync(inRoot('mine.txt'), 'mine');
+        await e.syncNow();
+        expect(remote.files.has('/mine.txt')).toBe(true);
+      });
+
+      it('another client changed something: the revision moved, the list is read, the change arrives', async () => {
+        const e = await settled();
+        resetCalls();
+        remote.put('/theirs.txt', 'theirs');
+        remote.revisionValue = 11;
+        await e.syncNow();
+        expect(remote.flatCalls).toBe(1);
+        expect(existsSync(inRoot('theirs.txt'))).toBe(true);
+        await e.syncNow(); // and then it stands again
+        expect(remote.flatCalls).toBe(1);
+      });
+
+      it('a deletion by another client is seen as well', async () => {
+        const e = await settled();
+        remote.files.delete('/a.txt');
+        remote.revisionValue = 11;
+        await e.syncNow();
+        expect(existsSync(inRoot('a.txt'))).toBe(false);
+      });
+
+      it('our own upload never hides a change of another client made at the same time', async () => {
+        const e = await settled();
+        writeFileSync(inRoot('mine.txt'), 'mine');
+        await e.syncNow(); // we write to the Disk: what we remembered of it is dropped
+        remote.put('/theirs.txt', 'theirs'); // another client; the counter stays at a value we know
+        resetCalls();
+        await e.syncNow(); // after our own write the list is read once more, whatever the revision
+        expect(remote.flatCalls).toBe(1);
+        expect(existsSync(inRoot('theirs.txt'))).toBe(true);
+        await e.syncNow();
+        expect(remote.flatCalls).toBe(1); // and now it stands
+      });
+
+      it('our own deletion and new folder also make the next run read the list', async () => {
+        const e = await settled();
+        rmSync(inRoot('a.txt'));
+        mkdirSync(inRoot('d'));
+        await e.syncNow();
+        expect(remote.files.has('/a.txt')).toBe(false);
+        remote.put('/theirs.txt', 'theirs');
+        resetCalls();
+        await e.syncNow();
+        expect(remote.flatCalls).toBe(1);
+        expect(existsSync(inRoot('theirs.txt'))).toBe(true);
+      });
+
+      it('a change made while the list was being read is not lost: the revision read before it is kept', async () => {
+        remote.put('/a.txt', 'a');
+        remote.revisionValue = 10;
+        const e = makeRoot();
+        await e.syncNow();
+        remote.afterList = () => {
+          remote.put('/late.txt', 'late'); // another client, after our list was cut
+          remote.revisionValue = 11;
+          remote.afterList = undefined;
+        };
+        await e.syncNow(); // lists at revision 10; the late change is not in that list
+        expect(existsSync(inRoot('late.txt'))).toBe(false);
+        await e.syncNow(); // revision 11 ≠ 10: read again
+        expect(existsSync(inRoot('late.txt'))).toBe(true);
+      });
+
+      it('a list with a file whose md5 is not ready yet is not trusted', async () => {
+        remote.put('/a.txt', 'a');
+        remote.revisionValue = 10;
+        remote.hideMd5 = true;
+        const e = makeRoot();
+        await e.syncNow();
+        await e.syncNow();
+        resetCalls();
+        await e.syncNow();
+        expect(remote.flatCalls).toBe(1); // read again although the revision stands
+      });
+
+      it('"Sync now" and the changes made in the file manager still read the whole tree', async () => {
+        const e = await settled();
+        resetCalls();
+        await e.syncNow({ immediate: true });
+        expect(remote.listCalls.length).toBeGreaterThan(0);
+        resetCalls();
+        e.invalidateRemote();
+        await e.syncNow();
+        expect(remote.listCalls.length).toBeGreaterThan(0);
+      });
+
+      it('the walk by the timer is kept: the same revision does not postpone it', async () => {
+        const e = await settled({ fullScanMs: 5 });
+        await new Promise(r => setTimeout(r, 20));
+        resetCalls();
+        await e.syncNow();
+        expect(remote.listCalls.length).toBeGreaterThan(0);
+      });
+
+      it('an empty folder made on the Disk is found by the walk, as before', async () => {
+        const e = await settled();
+        remote.dirs.add('/empty-new'); // the revision does not move for this
+        resetCalls();
+        await e.syncNow();
+        expect(existsSync(inRoot('empty-new'))).toBe(false);
+        await e.syncNow({ immediate: true });
+        expect(existsSync(inRoot('empty-new'))).toBe(true);
+      });
+
+      it.each([
+        ['reports no revision', (r: typeof remote) => (r.revisionValue = undefined)],
+        ['fails to report it', (r: typeof remote) => (r.failRevision = true)],
+      ])('behaves as before when the Disk %s', async (_why, breakIt) => {
+        const e = await settled();
+        breakIt(remote);
+        resetCalls();
+        remote.put('/theirs.txt', 'theirs');
+        await e.syncNow();
+        expect(remote.flatCalls).toBe(1);
+        expect(existsSync(inRoot('theirs.txt'))).toBe(true);
+        expect(e.getProgress()).toMatchObject({ error: null, failures: [] });
+      });
+
+      it('a Disk without the revision call at all is read every time, as before', async () => {
+        const plain = remote as unknown as { revision?: unknown };
+        const saved = plain.revision;
+        plain.revision = undefined;
+        remote.put('/a.txt', 'a');
+        const e = makeRoot();
+        await e.syncNow();
+        await e.syncNow();
+        resetCalls();
+        await e.syncNow();
+        expect(remote.flatCalls).toBe(1);
+        plain.revision = saved;
+      });
     });
 
     describe('empty folders, which the flat list cannot show', () => {

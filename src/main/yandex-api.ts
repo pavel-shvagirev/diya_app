@@ -132,6 +132,15 @@ function toMetadata(raw: RawResource): FileMetadata {
  *
  * @see https://yandex.com/dev/disk/rest/
  */
+/**
+ * A revision is a positive whole number (now a Unix time in microseconds), as a number or as
+ * digits in a string. Anything else is not one.
+ */
+export function parseRevision(raw: unknown): number | undefined {
+  const n = typeof raw === 'string' && /^\d{1,16}$/.test(raw) ? Number(raw) : raw;
+  return typeof n === 'number' && Number.isSafeInteger(n) && n > 0 ? n : undefined;
+}
+
 export class YandexDiskClient {
   private _accessToken: string;
   private readonly options: Required<YandexDiskClientOptions>;
@@ -343,6 +352,7 @@ export class YandexDiskClient {
     total_space: number;
     used_space: number;
     trash_size: number;
+    revision?: number;
   }> {
     const info = await this.request<
       Record<string, unknown> & {
@@ -352,24 +362,53 @@ export class YandexDiskClient {
         trash_size: number;
       }
     >(`${this.baseUrl}/`, { headers: this.authHeaders(), signal });
-    this.noteRevision(info);
-    return info;
+    return { ...info, revision: this.readRevision(info) };
   }
 
-  private revisionMissingSaid = false;
+  private revisionLogged: number | undefined;
+  private revisionSeen = false;
+  private revisionWarned = false;
+  private revisionAbsentSaid = false;
 
   /**
-   * Diagnostics: does the answer carry a revision of the whole Disk, and does it change when
-   * something changes? (The reference does not list the field.) Logged at debug level only.
+   * The Disk's revision from a `GET /v1/disk/` answer, or undefined. The field is not in the
+   * reference (it is in the real answers); the sync engine uses it only to skip work, so anything
+   * it does not recognise means "unknown": the engine then reads everything, as it always did.
+   * A field that was there and is gone, or is no longer a number, is warned about once.
    */
-  private noteRevision(info: Record<string, unknown>): void {
-    const revision = info.revision;
-    if (typeof revision === 'number' || typeof revision === 'string') {
-      logger.debug('api', `disk info: revision ${revision}`);
-    } else if (!this.revisionMissingSaid) {
-      this.revisionMissingSaid = true;
-      logger.debug('api', `disk info: no revision field (fields: ${Object.keys(info).join(', ')})`);
+  private readRevision(info: Record<string, unknown>): number | undefined {
+    const raw = info.revision;
+    const revision = parseRevision(raw);
+    if (revision !== undefined) {
+      this.revisionSeen = true;
+      this.revisionWarned = false;
+      if (revision !== this.revisionLogged) logger.debug('api', `disk info: revision ${revision}`);
+      this.revisionLogged = revision;
+      return revision;
     }
+    if (raw === undefined) {
+      if (this.revisionSeen && !this.revisionWarned) {
+        this.revisionWarned = true;
+        logger.warn(
+          'api',
+          "disk info: 'revision' field is missing in API responses; the file list is read on every run"
+        );
+      } else if (!this.revisionSeen && !this.revisionAbsentSaid) {
+        this.revisionAbsentSaid = true;
+        logger.debug(
+          'api',
+          `disk info: no revision field (fields: ${Object.keys(info).join(', ')})`
+        );
+      }
+    } else if (!this.revisionWarned) {
+      this.revisionWarned = true;
+      logger.warn(
+        'api',
+        `disk info: the revision cannot be parsed, expected a positive integer (value: ${JSON.stringify(raw)?.slice(0, 40)}); the file list is read on every run`
+      );
+    }
+    this.revisionLogged = undefined;
+    return undefined;
   }
 
   // ── Listing ──────────────────────────────────────────────────

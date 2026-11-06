@@ -5,6 +5,18 @@ versions: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-11-06
+
+### Changed
+
+- Less traffic to the Disk when nothing changed there: a sync run first reads the Disk's revision
+  (one request) and, if it is the one seen before the last file list, does not read the list
+  again. A change by another client always moves the revision and is picked up at the next run;
+  our own writes, a walk, a change made in the file manager, a missing checksum, or a revision
+  that is missing or unreadable make the next run read the list as before (a warning is logged
+  once if the field is missing or changes format). The full walk every 30 minutes and "Sync now"
+  are unchanged, and an empty folder made on the Disk is still found by the walk only.
+
 ## [0.2.5] - 2026-11-05
 
 ### Added

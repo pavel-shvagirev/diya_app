@@ -30,6 +30,10 @@ export class YandexRemote implements RemoteStorage {
     return (await this.client.listAllFiles(signal)).map(toEntry);
   }
 
+  async revision(signal?: AbortSignal): Promise<number | undefined> {
+    return (await this.client.getDiskInfo(signal)).revision;
+  }
+
   async stat(remotePath: string, signal?: AbortSignal): Promise<RemoteEntry> {
     return toEntry(await this.client.getMeta(remotePath, signal));
   }
